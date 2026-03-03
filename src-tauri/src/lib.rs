@@ -339,7 +339,10 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
                 std::thread::sleep(std::time::Duration::from_millis(150));
                 
                 // Use PowerShell to send Ctrl+V
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
                 let _ = std::process::Command::new("powershell")
+                    .creation_flags(CREATE_NO_WINDOW)
                     .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
                     .output();
             });
@@ -372,7 +375,10 @@ fn copy_files(app: AppHandle, paths: Vec<String>, should_paste: Option<bool>) ->
             std::thread::sleep(std::time::Duration::from_millis(150));
             
             // Use PowerShell to send Ctrl+V
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
             let _ = std::process::Command::new("powershell")
+                .creation_flags(CREATE_NO_WINDOW)
                 .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
                 .output();
         });
