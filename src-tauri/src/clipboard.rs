@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use std::thread;
 use std::time::Duration;
 use arboard::{Clipboard, ImageData};
@@ -11,6 +11,19 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 pub fn start_listener(app: AppHandle) {
+    // Get database state (thread-safe handle)
+    // We need to clone the State wrapper, which is cheap (Arc)
+    // But State<T> is not directly clonable in older Tauri versions? 
+    // In Tauri v1, State<T> implements Clone. In v2 it should too.
+    // However, State<T> lifetime is bound to the request scope usually.
+    // But here we get it from AppHandle.
+    // Actually, it's better to just move app handle and get state inside loop or just get state here.
+    // Let's try getting state here.
+    
+    // Wait, State<'r, T> has a lifetime. We can't move it into 'static thread easily if it has lifetime.
+    // But AppHandle is 'static (clonable).
+    // So we can use AppHandle inside the thread to get State.
+    
     thread::spawn(move || {
         let mut clipboard = match Clipboard::new() {
             Ok(c) => c,
@@ -20,19 +33,18 @@ pub fn start_listener(app: AppHandle) {
             }
         };
 
-        // Use managed state or create new instance if not managed yet (fallback)
-        let db_path = Database::default_path();
-        let db = Database::new(db_path);
-        
-        // Ensure DB is ready
-        // if let Err(e) = db.init() {
-        //    eprintln!("Failed to init db in listener: {}", e);
-        // }
+        // We can get the state from the app handle
+        // Note: The state must be managed before this runs.
+        // Since we spawn this in setup() AFTER app.manage(db), it should be fine.
+        let db_state: State<Database> = app.state::<Database>();
+        let db = &*db_state; // Deref to Database
 
         let mut last_content = String::new();
         let mut last_image_hash: Option<u64> = None;
 
         loop {
+            thread::sleep(Duration::from_millis(500));
+            
             let mut new_content: Option<(String, String)> = None;
             let mut image_found = false;
 
@@ -47,7 +59,6 @@ pub fn start_listener(app: AppHandle) {
                     let current_hash = hasher.finish();
 
                     if last_image_hash != Some(current_hash) {
-                        image_found = true;
                         // Convert raw bytes (RGBA8) to PNG base64
                         let width = img_data.width as u32;
                         let height = img_data.height as u32;
@@ -65,9 +76,11 @@ pub fn start_listener(app: AppHandle) {
                                 if content_str != last_content {
                                     new_content = Some((content_str, "image".to_string()));
                                     last_image_hash = Some(current_hash);
+                                    image_found = true;
                                 } else {
                                     // Content string is same (should match hash logic, but just in case)
                                     last_image_hash = Some(current_hash);
+                                    image_found = true;
                                 }
                             }
                         }
@@ -89,72 +102,49 @@ pub fn start_listener(app: AppHandle) {
             }
 
             if let Some((content, type_)) = new_content {
+                // Use the shared database connection
                 if let Err(e) = db.insert(&content, &type_) {
                     eprintln!("Failed to insert history: {}", e);
                 } else {
                     println!("Clipboard changed: type={}, len={}", type_, content.len());
                     // Emit full object
+                    // We need to fetch the ID or just emit what we have.
+                    // Ideally we should query the DB to get the full item including ID and created_at
+                    // But for now, we just emit content/type and let frontend refresh or use this data.
+                    
+                    // Actually, db.insert updates created_at.
+                    
                     let payload = serde_json::json!({
                         "content": content,
                         "item_type": type_,
                         "created_at": chrono::Local::now().to_rfc3339()
                     });
-                    let _ = app.emit("clipboard-changed", payload);
+                     
+                    if let Err(e) = app.emit("clipboard-changed", payload) {
+                         eprintln!("Failed to emit event: {}", e);
+                    }
                     last_content = content;
                 }
             }
-            
-            thread::sleep(Duration::from_millis(1000));
         }
     });
 }
 
-fn detect_type(text: &str) -> String {
-    let trimmed = text.trim();
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+fn detect_type(content: &str) -> String {
+    if content.starts_with("http://") || content.starts_with("https://") {
         return "link".to_string();
     }
-    // Hex color: #RRGGBB or #RGB
-    if trimmed.starts_with("#") {
-        let hex = &trimmed[1..];
-        if (hex.len() == 6 || hex.len() == 3) && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-            return "color".to_string();
-        }
+    if content.starts_with("#") && (content.len() == 4 || content.len() == 7) {
+         return "color".to_string();
     }
-    // RGB/RGBA
-    if trimmed.starts_with("rgb(") || trimmed.starts_with("rgba(") {
-        return "color".to_string();
-    }
-    // File URL
-    if trimmed.starts_with("file://") {
+    if content.starts_with("/") || (content.len() > 2 && content.chars().nth(1) == Some(':')) {
         return "file".to_string();
-    }
-    // File path (simple check)
-    // Check for absolute path on Unix (/) or Windows (C:\)
-    if trimmed.starts_with("/") || (trimmed.len() > 2 && trimmed.chars().nth(1) == Some(':')) {
-        let path = std::path::Path::new(trimmed);
-        if path.exists() {
-            return "file".to_string();
-        }
     }
     "text".to_string()
 }
 
 pub fn copy_to_clipboard(content: &str) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    
-    if content.starts_with("data:image/png;base64,") {
-         let b64 = content.trim_start_matches("data:image/png;base64,");
-         let decoded = general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())?;
-         let img = image::load_from_memory(&decoded).map_err(|e| e.to_string())?;
-         let rgba = img.to_rgba8();
-         let img_data = ImageData {
-             width: rgba.width() as usize,
-             height: rgba.height() as usize,
-             bytes: Cow::Owned(rgba.into_raw()),
-         };
-         clipboard.set_image(img_data).map_err(|e| e.to_string())
-    } else {
-        clipboard.set_text(content).map_err(|e| e.to_string())
-    }
+    clipboard.set_text(content.to_string()).map_err(|e| e.to_string())?;
+    Ok(())
 }

@@ -386,7 +386,7 @@ pub fn run() {
         .setup(|app| {
             // Initialize Database
             let db_path = Database::default_path();
-            let db = Database::new(db_path);
+            let db = Database::new(db_path).expect("Failed to initialize database");
             if let Err(e) = db.init() {
                 eprintln!("Failed to init db: {}", e);
             }
