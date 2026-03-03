@@ -501,8 +501,6 @@ pub fn run() {
         .manage(HideSuppressState(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut("CommandOrControl+D")
-                .expect("Failed to register global shortcut")
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         if let Some(window) = app.get_webview_window("main") {
@@ -519,6 +517,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Register global shortcut manually to handle errors gracefully
+            #[cfg(target_os = "macos")]
+            let shortcut = "CommandOrControl+D";
+            #[cfg(target_os = "windows")]
+            let shortcut = "CommandOrControl+D";
+            
+            if let Err(e) = app.handle().global_shortcut().register(shortcut) {
+                eprintln!("Warning: Failed to register global shortcut '{}': {}", shortcut, e);
+            }
+
             // Initialize Database
             let handle = app.handle();
             let db_path = match handle.path().app_local_data_dir() {
