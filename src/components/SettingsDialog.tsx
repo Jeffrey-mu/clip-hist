@@ -33,7 +33,7 @@ import {
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { save, open as openDialog } from "@tauri-apps/plugin-dialog";
+import { save, open as openDialog, ask } from "@tauri-apps/plugin-dialog";
 
 const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => {
   const [recording, setRecording] = useState(false);
@@ -191,6 +191,26 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
       }
     } catch (e) {
       console.error("Import failed:", e);
+    }
+  };
+
+  const handleClearHistoryClick = async () => {
+    try {
+      const confirmed = await ask(
+        "此操作将永久删除所有剪切板历史记录，无法撤销。\n\n建议您在清除前先导出数据进行备份。",
+        {
+          title: "确定要清空历史记录吗？",
+          kind: "warning",
+          okLabel: "确认清除",
+          cancelLabel: "取消",
+        }
+      );
+
+      if (confirmed) {
+        onClearHistory();
+      }
+    } catch (e) {
+      console.error("Failed to show confirmation dialog:", e);
     }
   };
 
@@ -366,7 +386,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
                   <span className="font-medium flex items-center gap-2"><Trash2 className="w-4 h-4"/> 清除历史记录</span>
                   <span className="text-sm text-muted-foreground">永久删除所有剪切板历史记录。</span>
                 </div>
-                <Button variant="destructive" size="sm" onClick={onClearHistory}>全部清除</Button>
+                <Button variant="destructive" size="sm" onClick={handleClearHistoryClick}>全部清除</Button>
               </div>
               
               <div className="flex items-center justify-between">

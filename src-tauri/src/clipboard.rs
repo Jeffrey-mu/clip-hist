@@ -103,8 +103,13 @@ fn detect_type(text: &str) -> String {
     if text.starts_with("rgb(") || text.starts_with("rgba(") {
         return "color".to_string();
     }
+    // File URL
+    if text.starts_with("file://") {
+        return "file".to_string();
+    }
     // File path (simple check)
-    if text.starts_with("/") {
+    // Check for absolute path on Unix (/) or Windows (C:\)
+    if text.starts_with("/") || (text.len() > 2 && text.chars().nth(1) == Some(':')) {
         let path = std::path::Path::new(text);
         if path.exists() {
             return "file".to_string();

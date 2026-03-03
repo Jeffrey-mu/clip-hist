@@ -209,24 +209,54 @@ function App() {
     }
   };
 
+  const getRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} mins ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return date.toLocaleDateString();
+  };
+
+  const HighlightedText = ({ text, highlight }: { text: string, highlight: string }) => {
+    if (!highlight.trim()) {
+      return <span>{text}</span>;
+    }
+    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    return (
+      <span>
+        {parts.map((part, i) => 
+          part.toLowerCase() === highlight.toLowerCase() ? (
+            <span key={i} className="bg-yellow-400/40 text-foreground font-medium rounded-[2px]">{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+      </span>
+    );
+  };
+
   const renderPreview = (item: HistoryItem) => {
     if (item.item_type === 'image') {
       return (
-        <div className="flex flex-col h-full">
-          <div className="flex-1 flex items-center justify-center bg-muted/5 p-4 overflow-hidden">
+        <div className="flex flex-col h-full bg-background">
+          <div className="flex-1 flex items-center justify-center bg-muted/5 p-8 overflow-hidden">
             <img 
               src={item.content} 
               alt="Clipboard Image" 
-              className="max-w-full max-h-full object-contain shadow-sm rounded-md" 
+              className="max-w-full max-h-full object-contain shadow-sm rounded-lg" 
             />
           </div>
           <Separator />
-          <div className="p-4 bg-muted/10 text-xs text-muted-foreground">
-             <div className="grid grid-cols-2 gap-2">
-                <span className="font-medium">Type</span>
-                <span className="text-right">Image</span>
-                <span className="font-medium">Size</span>
-                <span className="text-right">Unknown</span>
+          <div className="p-6 bg-muted/10 text-xs text-muted-foreground">
+             <div className="grid grid-cols-2 gap-4">
+                <span className="font-medium text-muted-foreground">Type</span>
+                <span className="text-right text-foreground">Image</span>
+                <span className="font-medium text-muted-foreground">Size</span>
+                <span className="text-right text-foreground">Unknown</span>
              </div>
           </div>
         </div>
@@ -235,43 +265,43 @@ function App() {
     
     // Text based preview
     return (
-      <div className="flex flex-col h-full">
-         <ScrollArea className="flex-1 p-6">
+      <div className="flex flex-col h-full bg-background">
+         <ScrollArea className="flex-1 p-8">
           {item.item_type === 'color' ? (
-             <div className="flex flex-col items-center justify-center h-full gap-4 pt-10">
+             <div className="flex flex-col items-center justify-center h-full gap-5 pt-8">
               <div 
-                className="w-32 h-32 rounded-xl shadow-lg border border-border/50"
+                className="w-24 h-24 rounded-2xl shadow-xl border border-border/50 transition-all hover:scale-105"
                 style={{ backgroundColor: item.content }}
               />
-              <span className="font-mono text-xl font-medium">{item.content}</span>
+              <span className="font-mono text-xl font-medium tracking-wider select-text bg-muted/30 px-3 py-1 rounded-md">{item.content}</span>
             </div>
           ) : (
-            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed break-words text-foreground/90">
-              {item.content}
+            <div className="whitespace-pre-wrap font-mono text-sm leading-[1.8] break-words text-foreground/90 select-text">
+              <HighlightedText text={item.content} highlight={search} />
             </div>
           )}
         </ScrollArea>
         
         <Separator />
         
-        <div className="p-4 bg-muted/10">
-           <h3 className="text-xs font-medium text-muted-foreground mb-3">Information</h3>
-           <div className="grid grid-cols-[1fr_auto] gap-y-2 text-xs">
+        <div className="p-5 bg-muted/10">
+           <h3 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-4">Information</h3>
+           <div className="grid grid-cols-[1fr_auto] gap-y-3 text-xs">
               <span className="text-muted-foreground">Content type</span>
-              <span className="font-medium">{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
-              <Separator className="col-span-2 my-1 opacity-50"/>
+              <span className="font-medium text-foreground">{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
+              <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Characters</span>
-              <span className="font-medium">{item.content.length}</span>
-              <Separator className="col-span-2 my-1 opacity-50"/>
+              <span className="font-medium text-foreground">{item.content.length}</span>
+              <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Words</span>
-              <span className="font-medium">{getWordCount(item.content)}</span>
-              <Separator className="col-span-2 my-1 opacity-50"/>
+              <span className="font-medium text-foreground">{getWordCount(item.content)}</span>
+              <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Created</span>
-              <span className="font-medium">
-                {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <span className="font-medium text-foreground">
+                {getRelativeTime(item.created_at)}
               </span>
            </div>
         </div>
@@ -361,10 +391,10 @@ function App() {
                        }
                      }}
                      className={cn(
-                       "mx-2 px-3 py-2 cursor-pointer text-sm transition-all flex items-center gap-3 mb-0.5 rounded-md",
+                       "mx-3 px-3 py-2.5 cursor-pointer text-sm transition-all flex items-center gap-4 mb-1 rounded-r-md border-l-[3px]",
                        isSelected
-                         ? "bg-accent text-accent-foreground shadow-sm"
-                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                         ? "bg-accent/80 border-primary text-foreground shadow-sm"
+                         : "border-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground"
                      )}
                      onClick={() => {
                        setSelectedIndex(index);
@@ -376,7 +406,7 @@ function App() {
                      {/* Icon or Thumbnail */}
                      <div className="shrink-0">
                        {item.item_type === 'image' ? (
-                         <div className="w-8 h-8 overflow-hidden border border-border/20 bg-background">
+                         <div className="w-9 h-9 overflow-hidden border border-border/20 bg-background rounded-sm">
                            <img 
                              src={item.content} 
                              alt="Thumb" 
@@ -384,35 +414,51 @@ function App() {
                            />
                          </div>
                        ) : (
-                          <div className="w-8 h-8 flex items-center justify-center bg-background border border-border/10 shrink-0">
-                           <Icon className="w-4 h-4 opacity-50" />
+                          <div className="w-9 h-9 flex items-center justify-center bg-background border border-border/10 shrink-0 rounded-sm">
+                           <Icon className={cn(
+                             "w-4 h-4 transition-colors", 
+                             isSelected ? "opacity-100" : "opacity-70",
+                             item.item_type === 'text' && "text-blue-500",
+                             item.item_type === 'image' && "text-purple-500",
+                             item.item_type === 'link' && "text-sky-500",
+                             item.item_type === 'file' && "text-orange-500",
+                             item.item_type === 'color' && "text-pink-500"
+                           )} />
                          </div>
                        )}
                      </div>
  
                      {/* Content Info */}
-                     <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+                     <div className="flex flex-col min-w-0 flex-1 gap-1">
                        <div className="flex items-center justify-between">
                          <span className={cn(
-                           "truncate font-medium",
+                           "truncate font-medium leading-tight",
                            index === selectedIndex ? "text-foreground" : "text-foreground/80"
                          )}>
                            {item.item_type === 'image' 
-                             ? "Image" 
-                             : (item.content.trim().split('\n')[0] || "Empty content")}
+                             ? "Image Capture" 
+                             : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
+                           }
                          </span>
                        </div>
                        {item.item_type === 'image' && (
-                          <div className="text-[10px] opacity-60 truncate">Image Capture</div>
+                          <div className="text-[10px] opacity-60 truncate font-mono">
+                            {getRelativeTime(item.created_at)}
+                          </div>
+                       )}
+                       {item.item_type !== 'image' && (
+                          <div className="text-[10px] opacity-60 truncate font-mono flex items-center justify-between">
+                            <span>{item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
+                            {/* Always show time for better info density if needed, or just selected */}
+                            <span>{getRelativeTime(item.created_at)}</span>
+                          </div>
                        )}
                      </div>
                      
-                     {/* Time */}
-                     {index === selectedIndex && (
-                        <span className="text-[10px] opacity-50 shrink-0">
-                           {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                     )}
+                     {/* Time (Removed from right side as we integrated it below title for better density/scanability like Raycast sometimes does, or keep it right?) 
+                         User said: "Created: 05:42" -> "5 mins ago". 
+                         Raycast puts time on far right. Let's stick to far right for consistency with request.
+                     */}
                    </div>
                  );
                })}
