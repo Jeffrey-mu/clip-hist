@@ -25,7 +25,7 @@ struct GlobalShortcutState(Mutex<Option<String>>);
 struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
 struct HideSuppressState(Mutex<Option<Instant>>);
 
-fn move_window_to_mouse_monitor(_window: &WebviewWindow) -> Result<(), String> {
+fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // 1. Get mouse location from Tauri directly instead of Cocoa
@@ -458,8 +458,30 @@ pub fn run() {
         )
         .setup(|app| {
             // Initialize Database
-            let db_path = Database::default_path();
-            let db = Database::new(db_path).expect("Failed to initialize database");
+            let handle = app.handle();
+            let db_path = match handle.path().app_local_data_dir() {
+                Ok(mut path) => {
+                    path.push("clip-hist");
+                    if let Err(e) = std::fs::create_dir_all(&path) {
+                        eprintln!("Error creating data dir: {}", e);
+                        Database::default_path()
+                    } else {
+                        path.push("history.db");
+                        path
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Error getting app data dir: {}", e);
+                    Database::default_path()
+                }
+            };
+
+            let db = Database::new(db_path.clone()).or_else(|e| {
+                eprintln!("Failed to open DB at {:?}: {}", db_path, e);
+                let fallback = Database::default_path();
+                Database::new(fallback)
+            }).expect("Failed to initialize database");
+
             if let Err(e) = db.init() {
                 eprintln!("Failed to init db: {}", e);
             }

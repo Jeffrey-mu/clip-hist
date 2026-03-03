@@ -24,11 +24,22 @@ impl Database {
     }
 
     pub fn default_path() -> PathBuf {
-        let mut path = std::env::current_dir().unwrap();
-        path.push("target");
-        std::fs::create_dir_all(&path).expect("failed to create target dir");
-        path.push("history-dev.db");
-        path
+        match std::env::current_dir() {
+            Ok(mut path) => {
+                path.push("target");
+                if let Err(e) = std::fs::create_dir_all(&path) {
+                    eprintln!("Warning: Failed to create target dir: {}", e);
+                    // Fallback to raw filename in current dir
+                    return PathBuf::from("history-dev.db");
+                }
+                path.push("history-dev.db");
+                path
+            },
+            Err(e) => {
+                eprintln!("Warning: Failed to get current dir: {}", e);
+                PathBuf::from("history-dev.db")
+            }
+        }
     }
 
     pub fn init(&self) -> Result<()> {
