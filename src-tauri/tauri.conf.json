@@ -1,7 +1,7 @@
 {
-  "productName": "clip-hist-app",
+  "productName": "clip-hist",
   "version": "0.1.0",
-  "identifier": "com.wjf.clip-hist-app",
+  "identifier": "com.wjf.clip-hist",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",

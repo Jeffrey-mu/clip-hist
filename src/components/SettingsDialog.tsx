@@ -23,7 +23,6 @@ import {
   Moon, 
   Monitor, 
   Trash2, 
-  Keyboard,
   Download,
   Upload
 } from "lucide-react";

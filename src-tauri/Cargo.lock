@@ -384,7 +384,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "clip-hist-app"
+name = "clip-hist"
 version = "0.1.0"
 dependencies = [
  "arboard",

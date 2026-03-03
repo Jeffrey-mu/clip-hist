@@ -38,7 +38,7 @@ export function EditDialog({ open, onOpenChange, initialContent, onSave }: EditD
       <DialogContent 
         className="sm:max-w-[600px] h-[500px] flex flex-col gap-4" 
         onOpenAutoFocus={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => {
+        onEscapeKeyDown={() => {
            // Prevent default Radix behavior if needed, but more importantly stop propagation
            // Actually Radix handles escape, we just need to ensure it doesn't bubble to window
            // But Radix portals might bubble?
