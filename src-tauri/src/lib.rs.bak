@@ -1,0 +1,38 @@
+mod db;
+mod clipboard;
+
+use tauri::{AppHandle, Manager};
+use db::{Database, HistoryItem};
+
+#[tauri::command]
+fn get_history(app: AppHandle) -> Result<Vec<HistoryItem>, String> {
+    let db = Database::new(&app);
+    db.get_history(50).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn copy_item(content: String) -> Result<(), String> {
+    clipboard::copy_to_clipboard(&content)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            let handle = app.handle().clone();
+            
+            // Initialize DB
+            let db = Database::new(&handle);
+            if let Err(e) = db.init() {
+                eprintln!("Failed to init DB: {}", e);
+            }
+
+            // Start listener
+            clipboard::start_listener(handle);
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![get_history, copy_item])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
