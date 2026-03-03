@@ -331,6 +331,21 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
         }
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        if should_paste.unwrap_or(false) {
+            std::thread::spawn(|| {
+                // Give time for window to hide and previous app to focus
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                
+                // Use PowerShell to send Ctrl+V
+                let _ = std::process::Command::new("powershell")
+                    .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
+                    .output();
+            });
+        }
+    }
+
     Ok(())
 }
 
@@ -344,18 +359,31 @@ fn clear_history(app: AppHandle, db: State<'_, Database>) -> Result<(), String> 
 
 #[tauri::command]
 #[cfg(target_os = "windows")]
-fn copy_files(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+fn copy_files(app: AppHandle, paths: Vec<String>, should_paste: Option<bool>) -> Result<(), String> {
     let _clip = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
     formats::FileList.write_clipboard(paths.as_slice()).map_err(|e| e.to_string())?;
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
     }
+
+    if should_paste.unwrap_or(false) {
+        std::thread::spawn(|| {
+            // Give time for window to hide and previous app to focus
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            
+            // Use PowerShell to send Ctrl+V
+            let _ = std::process::Command::new("powershell")
+                .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
+                .output();
+        });
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 #[cfg(not(target_os = "windows"))]
-fn copy_files(_app: AppHandle, _paths: Vec<String>) -> Result<(), String> {
+fn copy_files(_app: AppHandle, _paths: Vec<String>, _should_paste: Option<bool>) -> Result<(), String> {
     Err("copy_files is only supported on Windows currently".into())
 }
 

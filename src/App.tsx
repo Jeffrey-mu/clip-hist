@@ -234,7 +234,7 @@ function App() {
         // Support single path or multi-path separated by newlines/semicolons
         const parts = item.content.split(/\r?\n|;\s*/).map(s => s.trim()).filter(Boolean);
         const paths = parts.length > 0 ? parts : [item.content];
-        await invoke("copy_files", { paths });
+        await invoke("copy_files", { paths, shouldPaste });
       } else {
         await invoke("copy_item", { content: item.content, shouldPaste });
         // Window is hidden by the backend command
