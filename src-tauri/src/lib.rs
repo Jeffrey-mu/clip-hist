@@ -267,8 +267,7 @@ fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_history(app: AppHandle, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>, String> {
-    let db = Database::new(&app);
+fn get_history(db: State<'_, Database>, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>, String> {
     match db.get_history(limit, offset, search, filter_type) {
         Ok(items) => Ok(items),
         Err(e) => {
@@ -291,27 +290,6 @@ fn copy_item(app: AppHandle, content: String) -> Result<(), String> {
     
     #[cfg(target_os = "macos")]
     {
-        // On macOS, hiding the window of an accessory app might not return focus to the previous app
-        // automatically if the app is still "active".
-        // We can use NSApplication::hide to properly hide the app and return focus.
-        // Since we can't easily add objc crate right now without potential conflicts, 
-        // we will try to use a trick: show and hide the dock icon or just rely on activation policy.
-        
-        // Actually, if we are an Accessory app, window.hide() SHOULD return focus.
-        // But the user reports it doesn't.
-        // Let's try to explicitly hide the application using tauri's `hide` method if available on AppHandle.
-        // In Tauri v2, app.hide() seems to be available on AppHandle via the `tauri::Manager` or similar?
-        // Let's try to use the `macos-private-api` feature but it failed config validation.
-        
-        // Alternative: Use `open` command to run AppleScript to hide the app? Too slow.
-        // Best way: use `objc` crate. But let's try to minimize dependency changes.
-        // Let's assume the user has issues because the window is not hidden "enough".
-        
-        // Re-reading docs: app.hide() IS available on macOS in Tauri v1. In v2 it might be different.
-        // Let's try to use `app.hide()` again but without `macos-private-api` feature, maybe it IS public but just needs `Manager` trait?
-        // Wait, I tried that and `cargo check` failed? No, `cargo check` failed because of `macos-private-api` feature mismatch in config.
-        // I will try to call `app.hide()` again, assuming it is available.
-        
         let _ = app.hide();
     }
     
@@ -319,8 +297,7 @@ fn copy_item(app: AppHandle, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn clear_history(app: AppHandle) -> Result<(), String> {
-    let db = Database::new(&app);
+fn clear_history(app: AppHandle, db: State<'_, Database>) -> Result<(), String> {
     db.delete_all().map_err(|e| e.to_string())?;
     // Emit event to update UI
     let _ = app.emit("clipboard-changed", ()); 
@@ -347,8 +324,7 @@ fn update_shortcut(app: AppHandle, state: State<'_, GlobalShortcutState>, shortc
 }
 
 #[tauri::command]
-fn export_data(app: AppHandle, path: String) -> Result<(), String> {
-    let db = Database::new(&app);
+fn export_data(db: State<'_, Database>, path: String) -> Result<(), String> {
     let items = db.get_all_for_export().map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(&items).map_err(|e| e.to_string())?;
     
@@ -358,13 +334,12 @@ fn export_data(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn import_data(app: AppHandle, path: String) -> Result<(), String> {
+fn import_data(app: AppHandle, db: State<'_, Database>, path: String) -> Result<(), String> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let mut json = String::new();
     file.read_to_string(&mut json).map_err(|e| e.to_string())?;
     
     let items: Vec<HistoryItem> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    let db = Database::new(&app);
     
     for item in items {
         db.import_item(&item).map_err(|e| e.to_string())?;
@@ -375,8 +350,7 @@ fn import_data(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_before(app: AppHandle, cutoff_date: String) -> Result<(), String> {
-    let db = Database::new(&app);
+fn delete_before(app: AppHandle, db: State<'_, Database>, cutoff_date: String) -> Result<(), String> {
     db.delete_before(&cutoff_date).map_err(|e| e.to_string())?;
     let _ = app.emit("clipboard-changed", ());
     Ok(())
@@ -410,6 +384,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Initialize Database
+            let db_path = Database::default_path();
+            let db = Database::new(db_path);
+            if let Err(e) = db.init() {
+                eprintln!("Failed to init db: {}", e);
+            }
+            app.manage(db);
+
+            clipboard::start_listener(app.handle().clone());
+            
             #[cfg(target_os = "macos")]
             {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -434,18 +418,7 @@ pub fn run() {
                 }
             }
 
-            let handle = app.handle();
-            
-            // Initialize DB
-            let db = Database::new(&handle);
-            if let Err(e) = db.init() {
-                eprintln!("Failed to init DB: {}", e);
-            } else {
-                println!("DB Initialized successfully");
-            }
-
-            // Start listener
-            clipboard::start_listener(handle.clone());
+            let _handle = app.handle();
             
             // Setup Tray
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

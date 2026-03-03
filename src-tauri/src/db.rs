@@ -16,16 +16,17 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(_app: &AppHandle) -> Self {
-        // Use target directory for dev to avoid triggering watch and permission issues
-        // let path = std::env::current_dir().unwrap().join("target/history.db");
-        // Better: use a temp directory or specific dev path that is ignored
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    pub fn default_path() -> PathBuf {
         let mut path = std::env::current_dir().unwrap();
         path.push("target");
         std::fs::create_dir_all(&path).expect("failed to create target dir");
         path.push("history-dev.db");
         println!("Database path: {:?}", path);
-        Self { path }
+        path
     }
 
     pub fn init(&self) -> Result<()> {

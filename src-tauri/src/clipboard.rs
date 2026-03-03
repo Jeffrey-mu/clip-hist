@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use std::thread;
 use std::time::Duration;
 use arboard::{Clipboard, ImageData};
@@ -7,6 +7,8 @@ use base64::{Engine as _, engine::general_purpose};
 use image::{ImageBuffer, Rgba, DynamicImage};
 use std::borrow::Cow;
 use std::io::Cursor;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 pub fn start_listener(app: AppHandle) {
     thread::spawn(move || {
@@ -18,7 +20,9 @@ pub fn start_listener(app: AppHandle) {
             }
         };
 
-        let db = Database::new(&app);
+        // Use managed state or create new instance if not managed yet (fallback)
+        let db_path = Database::default_path();
+        let db = Database::new(db_path);
         
         // Ensure DB is ready
         // if let Err(e) = db.init() {
@@ -26,6 +30,7 @@ pub fn start_listener(app: AppHandle) {
         // }
 
         let mut last_content = String::new();
+        let mut last_image_hash: Option<u64> = None;
 
         loop {
             let mut new_content: Option<(String, String)> = None;
@@ -34,25 +39,41 @@ pub fn start_listener(app: AppHandle) {
             // 1. Try to get Image first
             if let Ok(img_data) = clipboard.get_image() {
                 if img_data.width > 0 && img_data.height > 0 {
-                    image_found = true;
-                    // Convert raw bytes (RGBA8) to PNG base64
-                    let width = img_data.width as u32;
-                    let height = img_data.height as u32;
-                    let bytes = img_data.bytes.into_owned();
+                    // Calculate hash of image data to avoid expensive processing if unchanged
+                    let mut hasher = DefaultHasher::new();
+                    img_data.bytes.hash(&mut hasher);
+                    img_data.width.hash(&mut hasher);
+                    img_data.height.hash(&mut hasher);
+                    let current_hash = hasher.finish();
 
-                    if let Some(img_buffer) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes) {
-                        let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
-                        let mut png_bytes: Vec<u8> = Vec::new();
-                        
-                        if let Ok(_) = dynamic_image.write_to(&mut Cursor::new(&mut png_bytes), image::ImageOutputFormat::Png) {
-                            let base64_str = general_purpose::STANDARD.encode(&png_bytes);
-                            let content_str = format!("data:image/png;base64,{}", base64_str);
+                    if last_image_hash != Some(current_hash) {
+                        image_found = true;
+                        // Convert raw bytes (RGBA8) to PNG base64
+                        let width = img_data.width as u32;
+                        let height = img_data.height as u32;
+                        let bytes = img_data.bytes.into_owned();
+
+                        if let Some(img_buffer) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes) {
+                            let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
+                            let mut png_bytes: Vec<u8> = Vec::new();
                             
-                            // Check against last_content
-                            if content_str != last_content {
-                                new_content = Some((content_str, "image".to_string()));
+                            if let Ok(_) = dynamic_image.write_to(&mut Cursor::new(&mut png_bytes), image::ImageOutputFormat::Png) {
+                                let base64_str = general_purpose::STANDARD.encode(&png_bytes);
+                                let content_str = format!("data:image/png;base64,{}", base64_str);
+                                
+                                // Check against last_content
+                                if content_str != last_content {
+                                    new_content = Some((content_str, "image".to_string()));
+                                    last_image_hash = Some(current_hash);
+                                } else {
+                                    // Content string is same (should match hash logic, but just in case)
+                                    last_image_hash = Some(current_hash);
+                                }
                             }
                         }
+                    } else {
+                        // Image hasn't changed based on hash
+                        image_found = true; 
                     }
                 }
             }
