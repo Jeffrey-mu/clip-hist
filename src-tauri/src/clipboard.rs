@@ -149,8 +149,33 @@ fn detect_type(content: &str) -> String {
 
 pub fn copy_to_clipboard(content: &str) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+
+    if content.starts_with("data:image/") {
+        if let Some(comma_idx) = content.find(',') {
+            let b64 = &content[(comma_idx + 1)..];
+            let bytes = general_purpose::STANDARD
+                .decode(b64)
+                .map_err(|e| format!("Failed to decode base64 image: {}", e))?;
+
+            let dyn_img =
+                image::load_from_memory(&bytes).map_err(|e| format!("Decode image failed: {}", e))?;
+            let rgba = dyn_img.to_rgba8();
+            let (w, h) = rgba.dimensions();
+            let raw = rgba.into_raw();
+
+            let img_data = arboard::ImageData {
+                width: w as usize,
+                height: h as usize,
+                bytes: std::borrow::Cow::Owned(raw),
+            };
+            clipboard
+                .set_image(img_data)
+                .map_err(|e| format!("Set image to clipboard failed: {}", e))?;
+            return Ok(());
+        }
+    }
+
     clipboard
         .set_text(content.to_string())
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        .map_err(|e| e.to_string())
 }

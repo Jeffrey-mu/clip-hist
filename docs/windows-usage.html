@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clip Hist - Windows 使用教程</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; line-height: 1.6; }
+    header { background: #0f172a; color: #fff; padding: 32px 20px; }
+    header h1 { margin: 0 0 6px 0; font-size: 24px; }
+    header p { margin: 0; opacity: .9; }
+    main { max-width: 900px; margin: 24px auto; padding: 0 16px 64px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 24px; }
+    nav a { text-decoration: none; color: #0ea5e9; font-size: 14px; padding: 6px 10px; border: 1px solid #0ea5e944; border-radius: 8px; }
+    section { margin: 28px 0; }
+    h2 { font-size: 20px; margin: 18px 0; }
+    h3 { font-size: 16px; margin: 14px 0 8px; }
+    code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background: #0b1220; color: #e2e8f0; padding: 2px 6px; border-radius: 6px; }
+    pre { background: #0b1220; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow: auto; }
+    ul { padding-left: 22px; }
+    .tip { background: #e0f2fe22; border: 1px solid #38bdf866; padding: 10px 12px; border-radius: 8px; }
+    .kbd { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #f1f5f9; color: #0f172a; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    footer { max-width: 900px; margin: 0 auto; padding: 16px; color: #64748b; font-size: 12px; }
+    @media (prefers-color-scheme: light) {
+      code, kbd, pre { background: #0b1220; color: #e2e8f0; }
+      header { background: #0f172a; }
+    }
+  </style>
+  <meta name="description" content="Clip Hist Windows 使用教程：安装、运行、快捷键、托盘、设置、历史保留、常见问题。">
+</head>
+<body>
+  <header>
+    <h1>Clip Hist - Windows 使用教程</h1>
+    <p>快速上手剪贴板历史，支持全局快捷键、托盘图标、自动隐藏与便捷操作。</p>
+  </header>
+
+  <main>
+    <nav>
+      <a href="#quickstart">快速开始</a>
+      <a href="#basic">基本操作</a>
+      <a href="#history">历史与动作</a>
+      <a href="#settings">设置说明</a>
+      <a href="#tray">托盘与窗口</a>
+      <a href="#build">构建与打包</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+
+    <section id="quickstart">
+      <h2>快速开始</h2>
+      <div class="grid">
+        <div>
+          <h3>系统要求</h3>
+          <ul>
+            <li>Windows 10 或更高版本（x64）</li>
+            <li>若需本地构建：Node.js 18+、Rust Stable、Tauri 相关依赖</li>
+          </ul>
+        </div>
+        <div>
+          <h3>开发运行</h3>
+          <pre>npm install
+npm run tauri dev</pre>
+        </div>
+        <div>
+          <h3>打包发布</h3>
+          <pre>npm run tauri build</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="basic">
+      <h2>基本操作</h2>
+      <ul>
+        <li><strong>打开/隐藏窗口</strong>：
+          <ul>
+            <li>默认全局快捷键：<span class="kbd">Ctrl</span> + <span class="kbd">D</span>（可在设置中修改）</li>
+            <li>托盘图标：<strong>左键单击</strong>在鼠标所在屏幕显示/隐藏窗口；<strong>右键</strong>打开菜单（显示历史、退出）</li>
+            <li>主界面按 <span class="kbd">Esc</span> 立即隐藏窗口</li>
+          </ul>
+        </li>
+        <li><strong>自动隐藏</strong>：点击窗口外部区域时，窗口会自动隐藏</li>
+        <li><strong>拖动窗口</strong>：将鼠标置于窗口顶部空白拖拽区域按住左键拖动</li>
+      </ul>
+      <div class="tip">若左键打开出现闪烁，已在程序内部处理释放时触发与短暂抑制隐藏，确保单击稳定打开。</div>
+    </section>
+
+    <section id="history">
+      <h2>历史与动作</h2>
+      <ul>
+        <li><strong>浏览历史</strong>：滚动查看剪贴板记录，支持搜索</li>
+        <li><strong>复制到剪贴板</strong>：选中条目后按 <span class="kbd">Enter</span> 或点击复制</li>
+        <li><strong>动作菜单</strong>：
+          <ul>
+            <li>打开：<span class="kbd">Ctrl</span> + <span class="kbd">K</span> 或界面底部 “Actions”</li>
+            <li>支持：复制、编辑、删除</li>
+            <li>编辑对话框：<span class="kbd">Esc</span> 取消，<span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> 保存</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section id="settings">
+      <h2>设置说明</h2>
+      <ul>
+        <li><strong>外观主题</strong>：亮色 / 暗色 / 跟随系统</li>
+        <li><strong>主操作</strong>：可选择复制等默认行为</li>
+        <li><strong>历史保留时间</strong>：1天 / 7天 / 30天 / 3个月 / 1年 / 永久
+          <ul>
+            <li>在应用启动时会自动清理早于设定时限的历史记录</li>
+          </ul>
+        </li>
+        <li><strong>链接预览</strong>：可开关</li>
+        <li><strong>开机自启动</strong>：可通过设置开启/关闭</li>
+        <li><strong>全局快捷键</strong>：点击录制按钮，按下想要的组合键保存（如 <span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">D</span>）</li>
+      </ul>
+    </section>
+
+    <section id="tray">
+      <h2>托盘与窗口</h2>
+      <ul>
+        <li>托盘图标位于任务栏右下角通知区域</li>
+        <li>左键单击：在鼠标所在的显示器边缘弹出窗口，并自动聚焦</li>
+        <li>右键菜单：显示历史、退出应用</li>
+        <li>窗口在失去焦点或点击外部区域时自动隐藏</li>
+      </ul>
+    </section>
+
+    <section id="build">
+      <h2>构建与打包</h2>
+      <ul>
+        <li>开发调试：<code>npm run tauri dev</code></li>
+        <li>正式打包：<code>npm run tauri build</code>（生成安装包/可执行文件）</li>
+      </ul>
+    </section>
+
+    <section id="faq">
+      <h2>常见问题</h2>
+      <h3>1. 全局快捷键与其他程序冲突</h3>
+      <p>打开设置 → 全局快捷键，点击录制，输入新的组合键后保存（如 <span class="kbd">Ctrl</span> + <span class="kbd">Shift</span> + <span class="kbd">Space</span>）。</p>
+
+      <h3>2. 单击托盘图标后窗口闪一下</h3>
+      <p>已优化为在鼠标释放（Up）时执行切换，并增加短暂“隐藏抑制”，确保窗口稳定显示。</p>
+
+      <h3>3. 启动后历史记录变少</h3>
+      <p>请在设置中检查“历史保留时间”。应用启动时会清理超出保留期的历史记录。</p>
+
+      <h3>4. 开机自启动未生效</h3>
+      <p>请在设置中确认已开启“开机自启动”。若仍无效，可尝试关闭后重新开启。</p>
+    </section>
+  </main>
+
+  <footer>
+    本文适用于 Windows 版本。其他平台可能在快捷键与托盘行为上有所不同。
+  </footer>
+</body>
+</html>
+
