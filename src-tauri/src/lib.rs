@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSWindow, NSWindowButton};
@@ -22,8 +23,9 @@ use cocoa::foundation::NSPoint;
 
 struct GlobalShortcutState(Mutex<Option<String>>);
 struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
+struct HideSuppressState(Mutex<Option<Instant>>);
 
-fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
+fn move_window_to_mouse_monitor(_window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // 1. Get mouse location from Tauri directly instead of Cocoa
@@ -277,9 +279,6 @@ fn get_history(db: State<'_, Database>, limit: usize, offset: usize, search: Opt
     }
 }
 
-#[cfg(target_os = "macos")]
-// use tauri::Manager;
-
 #[tauri::command]
 fn copy_item(app: AppHandle, content: String) -> Result<(), String> {
     clipboard::copy_to_clipboard(&content)?;
@@ -301,6 +300,19 @@ fn clear_history(app: AppHandle, db: State<'_, Database>) -> Result<(), String> 
     db.delete_all().map_err(|e| e.to_string())?;
     // Emit event to update UI
     let _ = app.emit("clipboard-changed", ()); 
+    Ok(())
+}
+
+#[tauri::command]
+fn suppress_hide(state: State<'_, HideSuppressState>, ms: u64) -> Result<(), String> {
+    let until = if ms == 0 {
+        None
+    } else {
+        Some(Instant::now() + Duration::from_millis(ms))
+    };
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = until;
+    }
     Ok(())
 }
 
@@ -364,6 +376,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(GlobalShortcutState(Mutex::new(Some("CommandOrControl+D".into()))))
         .manage(WindowPositionState(Mutex::new(HashMap::new())))
+        .manage(HideSuppressState(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut("CommandOrControl+D")
@@ -393,6 +406,14 @@ pub fn run() {
             app.manage(db);
 
             clipboard::start_listener(app.handle().clone());
+            
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    // Hide native Windows title bar和窗口按钮，改为无框窗口
+                    let _ = window.set_decorations(false);
+                }
+            }
             
             #[cfg(target_os = "macos")]
             {
@@ -466,7 +487,47 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_history, copy_item, clear_history, update_shortcut, export_data, import_data, delete_before])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Focused(is_focused) = event {
+                if !*is_focused {
+                    let _ = window.hide();
+                }
+            }
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Focused(is_focused) = event {
+                if !*is_focused {
+                    // Debounce hiding to avoid immediate hide on click/drag edge cases
+                    let app = window.app_handle().clone();
+                    let label = window.label().to_string();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(180));
+                        if let Some(w) = app.get_webview_window(label.as_str()) {
+                            // If focus returned, do nothing
+                            let still_unfocused = !w.is_focused().unwrap_or(true);
+                            if !still_unfocused {
+                                return;
+                            }
+                            // Check suppression window
+                            let suppress = w.state::<HideSuppressState>();
+                            let now = Instant::now();
+                            let mut should_hide = true;
+                            if let Ok(guard) = suppress.0.lock() {
+                                if let Some(until) = *guard {
+                                    if until > now {
+                                        should_hide = false;
+                                    }
+                                }
+                            }
+                            if should_hide {
+                                let _ = w.hide();
+                            }
+                        }
+                    });
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![get_history, copy_item, clear_history, update_shortcut, export_data, import_data, delete_before, suppress_hide])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

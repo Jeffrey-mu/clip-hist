@@ -1,11 +1,10 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use std::thread;
 use std::time::Duration;
-use arboard::{Clipboard, ImageData};
+use arboard::Clipboard;
 use crate::db::Database;
 use base64::{Engine as _, engine::general_purpose};
 use image::{ImageBuffer, Rgba, DynamicImage};
-use std::borrow::Cow;
 use std::io::Cursor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

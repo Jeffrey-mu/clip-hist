@@ -356,6 +356,14 @@ function App() {
 
   const startDrag = async () => {
     try {
+      // Suppress backend hide-on-blur while dragging
+      await invoke("suppress_hide", { ms: 4000 });
+      const onMouseUp = async () => {
+        window.removeEventListener("mouseup", onMouseUp);
+        // Clear suppression as soon as mouse released
+        await invoke("suppress_hide", { ms: 0 }).catch(() => {});
+      };
+      window.addEventListener("mouseup", onMouseUp);
       await getCurrentWindow().startDragging();
     } catch (err) {
       console.error("Failed to start dragging", err);
