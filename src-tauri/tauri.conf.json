@@ -15,7 +15,7 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 480,
+        "height": 550,
         "resizable": true,
         "title": "ClipHist",
         "width": 750,

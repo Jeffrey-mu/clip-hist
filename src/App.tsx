@@ -254,7 +254,7 @@ function App() {
         
         <Separator />
         
-        <div className="p-4 bg-background/50">
+        <div className="p-4 bg-muted/10">
            <h3 className="text-xs font-medium text-muted-foreground mb-3">Information</h3>
            <div className="grid grid-cols-[1fr_auto] gap-y-2 text-xs">
               <span className="text-muted-foreground">Content type</span>
@@ -288,18 +288,18 @@ function App() {
   };
 
   return (
-    <div className="h-screen w-screen bg-background/60 dark:bg-background/60 text-foreground flex flex-col border border-border/50 overflow-hidden shadow-2xl font-sans">
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans">
       {/* Draggable Top Bar */}
       <div 
         data-tauri-drag-region 
-        className="h-6 w-full bg-background/20 flex items-center justify-center cursor-move z-50 hover:bg-background/40 transition-colors shrink-0"
+        className="h-6 w-full bg-background flex items-center justify-center cursor-move z-50 hover:bg-accent/10 transition-colors shrink-0"
         onMouseDown={startDrag}
       >
         <div className="w-12 h-1 rounded-full bg-muted-foreground/20 pointer-events-none" />
       </div>
 
       {/* Top Search Bar Area */}
-      <div className="flex items-center gap-3 p-3 border-b border-border/40 bg-background/40 backdrop-blur-md supports-[backdrop-filter]:bg-background/40">
+      <div className="flex items-center gap-3 p-3 border-b border-border bg-background">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
           <Input
@@ -308,11 +308,11 @@ function App() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
-            className="h-10 pl-9 border-none shadow-none focus-visible:ring-0 bg-muted/40 dark:bg-muted/60 placeholder:text-muted-foreground/50 rounded-md text-sm"
+            className="h-10 pl-9 border-input shadow-none focus-visible:ring-1 focus-visible:ring-ring bg-muted/50 placeholder:text-muted-foreground/50 rounded-md text-sm"
           />
         </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[130px] h-10 bg-muted/40 dark:bg-muted/60 border-none shadow-none focus:ring-0 text-sm">
+          <SelectTrigger className="w-[130px] h-10 bg-muted/50 border-input shadow-none focus:ring-1 focus:ring-ring text-sm">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
           <SelectContent>
@@ -338,7 +338,7 @@ function App() {
       {/* Main Split Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar: List */}
-        <div className="w-[35%] min-w-[250px] border-r border-border/40 flex flex-col bg-muted/30 dark:bg-muted/30 backdrop-blur-sm">
+        <div className="w-[35%] min-w-[250px] border-r border-border flex flex-col bg-muted">
           <div className="px-4 py-2 text-xs font-medium text-muted-foreground/70">Today</div>
           <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="space-y-2">
@@ -438,7 +438,7 @@ function App() {
       </div>
       
       {/* Footer Status Bar */}
-      <div className="h-9 border-t border-border/40 bg-muted/40 dark:bg-muted/60 flex items-center justify-between px-3 text-xs shrink-0 select-none">
+      <div className="h-9 border-t border-border bg-muted flex items-center justify-between px-3 text-xs shrink-0 select-none">
         <div className="flex items-center gap-2">
            <div className="bg-primary/10 p-1 rounded">
              <Clipboard className="w-3 h-3 text-primary" />

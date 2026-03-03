@@ -1,7 +1,7 @@
 mod db;
 mod clipboard;
 
-use tauri::{AppHandle, Manager, Emitter, State};
+use tauri::{AppHandle, Manager, Emitter, State, WebviewWindow, PhysicalPosition};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use db::{Database, HistoryItem};
@@ -9,15 +9,262 @@ use tauri_plugin_global_shortcut::{ShortcutState, GlobalShortcutExt};
 use std::sync::Mutex;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::collections::HashMap;
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSWindow, NSWindowButton};
 #[cfg(target_os = "macos")]
 use cocoa::base::{id, YES};
 #[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl};
+use objc::{msg_send, sel, sel_impl, class};
+#[cfg(target_os = "macos")]
+use cocoa::foundation::NSPoint;
 
 struct GlobalShortcutState(Mutex<Option<String>>);
+struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
+
+fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // 1. Get mouse location from Tauri directly instead of Cocoa
+        // This avoids coordinate system confusion.
+        // use tauri::cursor::CursorIcon;
+        // Actually Tauri doesn't expose global cursor position easily in v2 without window?
+        // Wait, we can use `cocoa` but we need to be careful about coordinates.
+        // The issue is likely how we calculate `mouse_y`.
+        // Cocoa (0,0) is bottom-left of PRIMARY screen.
+        // Tauri (0,0) is top-left of PRIMARY screen.
+        // But secondary screens can be anywhere.
+        
+        // Let's debug by printing coordinates if we could, but we can't easily.
+        // The previous logic assumed `primary_height - mouse_loc.y` converts correctly.
+        // This is only true if the primary monitor is at (0,0) in both systems (which it is)
+        // AND if the Y-axis simply flips.
+        
+        // However, for secondary monitors, `mouse_loc.y` can be negative or larger than primary height
+        // depending on arrangement.
+        // Correct conversion from Cocoa Global to Tauri Global:
+        // Tauri_Y = Primary_Monitor_Height - Cocoa_Y
+        // This formula IS correct for the global space assuming standard macOS arrangement.
+        
+        // BUT, there is a catch: `primary_monitor.size().height` returns PHYSICAL pixels.
+        // `mouse_loc.y` is in LOGICAL points.
+        // We were dividing physical height by scale factor, which gives logical height.
+        // That seems correct.
+        
+        // Let's re-verify the "monitor detection" logic.
+        // `monitor.position()` returns PHYSICAL coordinates in Tauri.
+        // We convert them to logical: `m_pos.x as f64 / m_scale`.
+        
+        // The issue might be that `mouse_loc` from `NSEvent mouseLocation` is in global screen coordinates.
+        // And `monitor.position()` from Tauri is also in global screen coordinates (top-left origin).
+        
+        // Let's try a different approach:
+        // Instead of manual calculation, let's use the fact that we just need to find which monitor bounds the point.
+        
+        // Let's double check `monitor.position()` coordinate system.
+        // Tauri docs: "Returns the position of the top-left hand corner of the monitor relative to the top-left corner of the primary monitor."
+        
+        // So:
+        // Tauri Global X = Cocoa Global X
+        // Tauri Global Y = Primary Screen Height (Logical) - Cocoa Global Y
+        
+        // Example: Primary 1080p. Mouse at top-left. Cocoa: (0, 1080). Tauri: (0, 0).
+        // 1080 - 1080 = 0. Correct.
+        // Mouse at bottom-left. Cocoa: (0, 0). Tauri: (0, 1080).
+        // 1080 - 0 = 1080. Correct.
+        
+        // Example: Secondary 1080p to the RIGHT of Primary. Top-aligned.
+        // Mouse at top-left of Secondary. 
+        // Cocoa: (1920, 1080). Tauri: (1920, 0).
+        // 1080 - 1080 = 0. Correct.
+        
+        // Example: Secondary 1080p ABOVE Primary.
+        // Mouse at bottom-left of Secondary (which touches top-left of Primary).
+        // Cocoa: (0, 1080). Tauri: (0, 0).
+        // Mouse at top-left of Secondary.
+        // Cocoa: (0, 2160). Tauri: (0, -1080).
+        // 1080 - 2160 = -1080. Correct.
+        
+        // So the formula seems correct.
+        // Why did it fail? "Mouse on screen 1, appears on screen 2".
+        // Maybe `monitors` order or `scale_factor` is messing up.
+        // `monitor.scale_factor()` might be different for each monitor.
+        
+        // Let's try to be more robust.
+        // Instead of using `primary_monitor` to flip, let's just search all monitors using Cocoa coordinates directly if possible?
+        // No, Tauri `monitor` structs give us Top-Left coordinates.
+        
+        // Maybe the issue is mixed DPI?
+        // If Primary is Retina (2.0) and Secondary is Standard (1.0).
+        // `primary_height` (Logical) = Physical / 2.0.
+        
+        // Let's check `mouse_loc` again. `NSEvent mouseLocation` returns points (Logical).
+        
+        // CRITICAL FIX:
+        // `monitor.position()` returns PhysicalPosition.
+        // `monitor.size()` returns PhysicalSize.
+        // We must convert EVERYTHING to Logical relative to THAT SPECIFIC MONITOR's scale factor?
+        // NO. The global coordinate space is continuous in Logical pixels (usually).
+        // Wait, in Tauri/Winit, `PhysicalPosition` is in physical pixels.
+        // But the "Global" space is tricky with mixed DPI.
+        
+        // Winit docs say: "The position is in physical pixels."
+        // This means (1920, 0) on a 1x monitor starts at 1920 px.
+        // But if the first monitor was 2x (size 3840 physical, 1920 logical), does the second start at 3840 or 1920?
+        // On macOS, the OS handles layout in Logical points.
+        // Tauri's `monitor.position()` returning Physical pixels is a conversion from OS Logical points * Scale Factor.
+        
+        // If we have mixed DPI, simple division might be wrong for the "Start" position.
+        // Actually, on macOS, `monitor.position()` (Physical) might be misleading if we just divide by its own scale factor.
+        
+        // Let's use `cocoa` to iterate screens directly! This avoids Tauri's coordinate conversion confusion.
+        // We can find which `NSScreen` contains the `mouseLocation`.
+        
+        let mouse_loc: NSPoint = unsafe {
+            let ns_event = class!(NSEvent);
+            msg_send![ns_event, mouseLocation]
+        };
+        
+        let screens: id = unsafe {
+            let ns_screen = class!(NSScreen);
+            msg_send![ns_screen, screens]
+        };
+        
+        let count: usize = unsafe { msg_send![screens, count] };
+        
+        for i in 0..count {
+            let screen: id = unsafe { msg_send![screens, objectAtIndex: i] };
+            let frame: cocoa::foundation::NSRect = unsafe { msg_send![screen, frame] };
+            
+            // Check if mouse is inside this screen's frame
+            // NSRect origin is bottom-left.
+            if mouse_loc.x >= frame.origin.x && 
+               mouse_loc.x < frame.origin.x + frame.size.width &&
+               mouse_loc.y >= frame.origin.y &&
+               mouse_loc.y < frame.origin.y + frame.size.height 
+            {
+                // Found the screen (monitor) where the mouse is!
+                // Now we need to map this `NSScreen` to a Tauri `Monitor`.
+                // We can try to match by position or name.
+                // Or just calculate the center of this `NSScreen` and convert it to Tauri coordinates.
+                
+                // Calculate center in Cocoa Global coordinates
+                let center_x_cocoa = frame.origin.x + frame.size.width / 2.0;
+                let center_y_cocoa = frame.origin.y + frame.size.height / 2.0;
+                
+                // Convert to Tauri Global coordinates
+                // Tauri Y = Primary_Height_Logical - Cocoa Y
+                // We need Primary Screen Height in Logical points.
+                let primary_screen: id = unsafe {
+                    let ns_screen = class!(NSScreen);
+                    let screens: id = msg_send![ns_screen, screens];
+                    msg_send![screens, objectAtIndex: 0] // Index 0 is always primary in Cocoa
+                };
+                let p_frame: cocoa::foundation::NSRect = unsafe { msg_send![primary_screen, frame] };
+                let p_height = p_frame.size.height; // Logical height
+                
+                let tauri_center_x = center_x_cocoa;
+                let tauri_center_y = p_height - center_y_cocoa;
+                
+                // Identify monitor name for memory
+                // We'll use the index 'i' as ID or try to find name.
+                // Using index is risky if setup changes, but fast.
+                // Let's try to match with Tauri monitors to get the name for consistency.
+                let monitors = window.available_monitors().map_err(|e| e.to_string())?;
+                
+                // Find Tauri monitor that matches this screen
+                // We can match by checking which Tauri monitor contains this center point.
+                let mut target_monitor_name = String::new();
+                let mut target_scale_factor = 1.0;
+                
+                for tm in &monitors {
+                    let scale = tm.scale_factor();
+                    let pos = tm.position();
+                    let size = tm.size();
+                    
+                    let tm_x = pos.x as f64 / scale;
+                    let tm_y = pos.y as f64 / scale;
+                    let tm_w = size.width as f64 / scale;
+                    let tm_h = size.height as f64 / scale;
+                    
+                    if tauri_center_x >= tm_x && tauri_center_x < tm_x + tm_w &&
+                       tauri_center_y >= tm_y && tauri_center_y < tm_y + tm_h {
+                        target_monitor_name = tm.name().map(|n| n.to_string()).unwrap_or_default();
+                        target_scale_factor = scale;
+                        break;
+                    }
+                }
+                
+                if target_monitor_name.is_empty() {
+                    // Fallback if not found (rare)
+                    target_monitor_name = format!("screen_{}", i);
+                }
+
+                // --- LOGIC FOR MEMORY AND POSITIONING ---
+                
+                // Check if we are already on this monitor
+                if let Some(current_monitor) = window.current_monitor().map_err(|e| e.to_string())? {
+                     let c_pos = current_monitor.position();
+                     let c_scale = current_monitor.scale_factor();
+                     let c_size = current_monitor.size();
+                     
+                     let c_x = c_pos.x as f64 / c_scale;
+                     let c_y = c_pos.y as f64 / c_scale;
+                     let c_w = c_size.width as f64 / c_scale;
+                     let c_h = c_size.height as f64 / c_scale;
+                     
+                     // Check if center of target screen is inside current monitor rect
+                     // (Rough check if it's the same monitor)
+                     if tauri_center_x >= c_x && tauri_center_x < c_x + c_w &&
+                        tauri_center_y >= c_y && tauri_center_y < c_y + c_h {
+                         return Ok(());
+                     }
+                     
+                     // Saving old position logic
+                     let current_win_pos = window.outer_position().map_err(|e| e.to_string())?;
+                     let current_monitor_name = current_monitor.name().map(|n| n.to_string()).unwrap_or_default();
+                     
+                     let state = window.state::<WindowPositionState>();
+                     if let Ok(mut positions) = state.0.lock() {
+                         positions.insert(current_monitor_name, current_win_pos);
+                     };
+                }
+                
+                // Restore or Center
+                let state = window.state::<WindowPositionState>();
+                let saved_pos = {
+                    let positions = state.0.lock().map_err(|_| "Failed to lock state")?;
+                    positions.get(&target_monitor_name).cloned()
+                };
+
+                if let Some(pos) = saved_pos {
+                     window.set_position(tauri::Position::Physical(pos)).map_err(|e| e.to_string())?;
+                } else {
+                    // Center on the found screen
+                    // We have tauri_center_x, tauri_center_y (Logical center of screen)
+                    // Window size (Physical)
+                    let window_size = window.outer_size().map_err(|e| e.to_string())?;
+                    let w_w = window_size.width as f64 / target_scale_factor;
+                    let w_h = window_size.height as f64 / target_scale_factor;
+                    
+                    let final_x = tauri_center_x - w_w / 2.0;
+                    let final_y = tauri_center_y - w_h / 2.0;
+                    
+                    window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
+                        x: final_x,
+                        y: final_y,
+                    })).map_err(|e| e.to_string())?;
+                }
+
+                return Ok(());
+            }
+        }
+    }
+    
+    // Fallback
+    Ok(())
+}
 
 #[tauri::command]
 fn get_history(app: AppHandle, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>, String> {
@@ -134,6 +381,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(GlobalShortcutState(Mutex::new(Some("CommandOrControl+Shift+V".into()))))
+        .manage(WindowPositionState(Mutex::new(HashMap::new())))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcut("CommandOrControl+Shift+V")
@@ -144,6 +392,7 @@ pub fn run() {
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
+                                let _ = move_window_to_mouse_monitor(&window);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -162,6 +411,7 @@ pub fn run() {
                     use tauri::Url;
                     let ns_window = window.ns_window().unwrap() as id;
                     unsafe {
+                        // Hide standard buttons
                         let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
                         let min_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
                         let zoom_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
@@ -169,6 +419,9 @@ pub fn run() {
                         let _: () = msg_send![close_button, setHidden: YES];
                         let _: () = msg_send![min_button, setHidden: YES];
                         let _: () = msg_send![zoom_button, setHidden: YES];
+
+                        // Disable window animation (NSWindowAnimationBehaviorNone = 2)
+                        let _: () = msg_send![ns_window, setAnimationBehavior: 2];
                     }
                 }
             }
@@ -203,6 +456,7 @@ pub fn run() {
                             }
                             "show" => {
                                 if let Some(window) = app.get_webview_window("main") {
+                                    let _ = move_window_to_mouse_monitor(&window);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
@@ -217,6 +471,7 @@ pub fn run() {
                                 if window.is_visible().unwrap_or(false) {
                                     let _ = window.hide();
                                 } else {
+                                    let _ = move_window_to_mouse_monitor(&window);
                                     let _ = window.show();
                                     let _ = window.set_focus();
                                 }
