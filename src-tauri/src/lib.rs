@@ -16,7 +16,7 @@ use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -550,14 +550,20 @@ pub fn run() {
                         _ => {}
                     })
                     .on_tray_icon_event(|tray, event| {
-                        if let TrayIconEvent::Click { button, .. } = event {
-                            // Only toggle window on left click
-                            if button == MouseButton::Left {
+                        if let TrayIconEvent::Click { button, button_state, .. } = event {
+                            // Only toggle window on left click and when released (avoid double trigger)
+                            if button == MouseButton::Left && button_state == MouseButtonState::Up {
                                 let app = tray.app_handle();
                                 if let Some(window) = app.get_webview_window("main") {
                                     if window.is_visible().unwrap_or(false) {
                                         let _ = window.hide();
                                     } else {
+                                        // Suppress hide logic for a short duration to allow window to gain focus
+                                        let state = app.state::<HideSuppressState>();
+                                        if let Ok(mut guard) = state.0.lock() {
+                                            *guard = Some(Instant::now() + Duration::from_millis(500));
+                                        }
+
                                         let _ = move_window_to_mouse_monitor(&window);
                                         let _ = window.show();
                                         let _ = window.set_focus();
