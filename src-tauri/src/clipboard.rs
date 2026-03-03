@@ -1,28 +1,28 @@
-use tauri::{AppHandle, Emitter, Manager, State};
-use std::thread;
-use std::time::Duration;
-use arboard::Clipboard;
 use crate::db::Database;
-use base64::{Engine as _, engine::general_purpose};
-use image::{ImageBuffer, Rgba, DynamicImage};
-use std::io::Cursor;
+use arboard::Clipboard;
+use base64::{engine::general_purpose, Engine as _};
+use image::{DynamicImage, ImageBuffer, Rgba};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::io::Cursor;
+use std::thread;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub fn start_listener(app: AppHandle) {
     // Get database state (thread-safe handle)
     // We need to clone the State wrapper, which is cheap (Arc)
-    // But State<T> is not directly clonable in older Tauri versions? 
+    // But State<T> is not directly clonable in older Tauri versions?
     // In Tauri v1, State<T> implements Clone. In v2 it should too.
     // However, State<T> lifetime is bound to the request scope usually.
     // But here we get it from AppHandle.
     // Actually, it's better to just move app handle and get state inside loop or just get state here.
     // Let's try getting state here.
-    
+
     // Wait, State<'r, T> has a lifetime. We can't move it into 'static thread easily if it has lifetime.
     // But AppHandle is 'static (clonable).
     // So we can use AppHandle inside the thread to get State.
-    
+
     thread::spawn(move || {
         let mut clipboard = match Clipboard::new() {
             Ok(c) => c,
@@ -43,7 +43,7 @@ pub fn start_listener(app: AppHandle) {
 
         loop {
             thread::sleep(Duration::from_millis(500));
-            
+
             let mut new_content: Option<(String, String)> = None;
             let mut image_found = false;
 
@@ -63,14 +63,19 @@ pub fn start_listener(app: AppHandle) {
                         let height = img_data.height as u32;
                         let bytes = img_data.bytes.into_owned();
 
-                        if let Some(img_buffer) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes) {
+                        if let Some(img_buffer) =
+                            ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, bytes)
+                        {
                             let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
                             let mut png_bytes: Vec<u8> = Vec::new();
-                            
-                            if let Ok(_) = dynamic_image.write_to(&mut Cursor::new(&mut png_bytes), image::ImageOutputFormat::Png) {
+
+                            if let Ok(_) = dynamic_image.write_to(
+                                &mut Cursor::new(&mut png_bytes),
+                                image::ImageOutputFormat::Png,
+                            ) {
                                 let base64_str = general_purpose::STANDARD.encode(&png_bytes);
                                 let content_str = format!("data:image/png;base64,{}", base64_str);
-                                
+
                                 // Check against last_content
                                 if content_str != last_content {
                                     new_content = Some((content_str, "image".to_string()));
@@ -85,7 +90,7 @@ pub fn start_listener(app: AppHandle) {
                         }
                     } else {
                         // Image hasn't changed based on hash
-                        image_found = true; 
+                        image_found = true;
                     }
                 }
             }
@@ -110,17 +115,17 @@ pub fn start_listener(app: AppHandle) {
                     // We need to fetch the ID or just emit what we have.
                     // Ideally we should query the DB to get the full item including ID and created_at
                     // But for now, we just emit content/type and let frontend refresh or use this data.
-                    
+
                     // Actually, db.insert updates created_at.
-                    
+
                     let payload = serde_json::json!({
                         "content": content,
                         "item_type": type_,
                         "created_at": chrono::Local::now().to_rfc3339()
                     });
-                     
+
                     if let Err(e) = app.emit("clipboard-changed", payload) {
-                         eprintln!("Failed to emit event: {}", e);
+                        eprintln!("Failed to emit event: {}", e);
                     }
                     last_content = content;
                 }
@@ -134,7 +139,7 @@ fn detect_type(content: &str) -> String {
         return "link".to_string();
     }
     if content.starts_with("#") && (content.len() == 4 || content.len() == 7) {
-         return "color".to_string();
+        return "color".to_string();
     }
     if content.starts_with("/") || (content.len() > 2 && content.chars().nth(1) == Some(':')) {
         return "file".to_string();
@@ -144,6 +149,8 @@ fn detect_type(content: &str) -> String {
 
 pub fn copy_to_clipboard(content: &str) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(content.to_string()).map_err(|e| e.to_string())?;
+    clipboard
+        .set_text(content.to_string())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

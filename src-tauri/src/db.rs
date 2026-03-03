@@ -42,8 +42,11 @@ impl Database {
             )",
             [],
         )?;
-        
-        let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN item_type TEXT DEFAULT 'text'", []);
+
+        let _ = conn.execute(
+            "ALTER TABLE clipboard_history ADD COLUMN item_type TEXT DEFAULT 'text'",
+            [],
+        );
         Ok(())
     }
 
@@ -57,20 +60,26 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_history(&self, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>> {
+    pub fn get_history(
+        &self,
+        limit: usize,
+        offset: usize,
+        search: Option<String>,
+        filter_type: Option<String>,
+    ) -> Result<Vec<HistoryItem>> {
         let conn = self.conn.lock().unwrap();
-        
+
         let mut query = "SELECT id, content, item_type, datetime(created_at, 'localtime') as created_at FROM clipboard_history".to_string();
         let mut where_clauses = Vec::new();
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(s) = search {
-             if !s.is_empty() {
+            if !s.is_empty() {
                 where_clauses.push("content LIKE ?");
                 args.push(Box::new(format!("%{}%", s)));
-             }
+            }
         }
-        
+
         if let Some(f) = filter_type {
             if f != "all" {
                 where_clauses.push("item_type = ?");
@@ -88,9 +97,9 @@ impl Database {
         args.push(Box::new(offset));
 
         let mut stmt = conn.prepare(&query)?;
-        
+
         let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| {
-             Ok(HistoryItem {
+            Ok(HistoryItem {
                 id: row.get(0)?,
                 content: row.get(1)?,
                 item_type: row.get(2)?,
@@ -111,7 +120,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT id, content, item_type, created_at FROM clipboard_history ORDER BY created_at DESC")?;
         let rows = stmt.query_map([], |row| {
-             Ok(HistoryItem {
+            Ok(HistoryItem {
                 id: row.get(0)?,
                 content: row.get(1)?,
                 item_type: row.get(2)?,
@@ -136,6 +145,21 @@ impl Database {
         conn.execute(
             "DELETE FROM clipboard_history WHERE created_at < ?",
             params![cutoff_date],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_item(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM clipboard_history WHERE id = ?", params![id])?;
+        Ok(())
+    }
+
+    pub fn update_item(&self, id: i64, content: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE clipboard_history SET content = ? WHERE id = ?",
+            params![content, id],
         )?;
         Ok(())
     }

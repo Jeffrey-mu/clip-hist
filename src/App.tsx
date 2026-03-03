@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { ActionsDialog } from "@/components/ActionsDialog";
+import { EditDialog } from "@/components/EditDialog";
 import { 
   Clipboard, 
   Search,
@@ -26,7 +28,7 @@ import {
   Settings,
 } from "lucide-react";
 
-import { enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { type } from "@tauri-apps/plugin-os";
 
 interface HistoryItem {
   id: number;
@@ -41,6 +43,8 @@ function App() {
   const [filterType, setFilterType] = useState("all");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -49,11 +53,21 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const observer = useRef<IntersectionObserver | null>(null);
 
+  const [osType, setOsType] = useState<string>("");
+
   // Stable reference to history length for fetchHistory
   const historyLengthRef = useRef(0);
   useEffect(() => {
     historyLengthRef.current = history.length;
   }, [history]);
+
+  useEffect(() => {
+    // Get OS type
+    setOsType(type());
+  }, []);
+
+  const isMac = osType === "macos";
+  const cmdKey = isMac ? "⌘" : "Ctrl";
 
   const fetchHistory = async (isReset = false) => {
     if (isLoading && !isReset) return;
@@ -98,41 +112,26 @@ function App() {
   useEffect(() => {
     // 1. History Cleanup
     const savedDuration = localStorage.getItem("app-history-duration") || "3months";
-    if (savedDuration !== "forever") {
-      const cleanup = async () => {
-        const now = new Date();
-        let cutoff = new Date();
-        
-        switch (savedDuration) {
-          case "1day": cutoff.setDate(now.getDate() - 1); break;
-          case "7days": cutoff.setDate(now.getDate() - 7); break;
-          case "30days": cutoff.setDate(now.getDate() - 30); break;
-          case "3months": cutoff.setMonth(now.getMonth() - 3); break;
-          case "1year": cutoff.setFullYear(now.getFullYear() - 1); break;
-        }
-        
-        // SQLite expects 'YYYY-MM-DD HH:MM:SS' or ISO8601 (UTC)
-        const cutoffStr = cutoff.toISOString().replace('T', ' ').split('.')[0];
-        try {
-          await invoke("delete_before", { cutoffDate: cutoffStr });
-        } catch (e) {
-          console.error("Startup cleanup failed:", e);
-        }
-      };
-      cleanup();
-    }
-
-    // 2. Auto-start default (enable on first run)
-    const autostartConfigured = localStorage.getItem("autostart-configured");
-    if (!autostartConfigured) {
-      isEnabled().then(enabled => {
-        if (!enabled) {
-          enable().then(() => {
-            console.log("Auto-start enabled by default");
-            localStorage.setItem("autostart-configured", "true");
-          }).catch(console.error);
-        }
-      });
+    
+    if (savedDuration && savedDuration !== "forever") {
+      const now = new Date();
+      const cutoff = new Date(now);
+      
+      let shouldCleanup = true;
+      switch (savedDuration) {
+        case "1day": cutoff.setDate(now.getDate() - 1); break;
+        case "7days": cutoff.setDate(now.getDate() - 7); break;
+        case "30days": cutoff.setDate(now.getDate() - 30); break;
+        case "3months": cutoff.setMonth(now.getMonth() - 3); break;
+        case "1year": cutoff.setFullYear(now.getFullYear() - 1); break;
+        default: shouldCleanup = false; break;
+      }
+      
+      if (shouldCleanup) {
+         // SQLite format: YYYY-MM-DD HH:MM:SS
+         const cutoffStr = cutoff.toISOString().replace('T', ' ').split('.')[0];
+         invoke("delete_before", { cutoffDate: cutoffStr }).catch(console.error);
+      }
     }
   }, []);
 
@@ -198,11 +197,59 @@ function App() {
     }
   };
 
+  const handleAction = (action: string) => {
+    if (!selectedItem) return;
+
+    if (action === "copy") {
+      handleCopy(selectedItem);
+    } else if (action === "edit") {
+      setIsEditOpen(true);
+    } else if (action === "delete") {
+      handleDelete(selectedItem);
+    }
+  };
+
+  const handleDelete = async (item: HistoryItem) => {
+    try {
+      await invoke("delete_item", { id: item.id });
+      setHistory(prev => prev.filter(i => i.id !== item.id));
+      if (selectedIndex >= history.length - 1) {
+          setSelectedIndex(Math.max(0, history.length - 2));
+      }
+    } catch (error) {
+      console.error("Failed to delete item:", error);
+    }
+  };
+
+  const handleUpdate = async (newContent: string) => {
+    if (!selectedItem) return;
+    try {
+      await invoke("update_item", { id: selectedItem.id, content: newContent });
+      setHistory(prev => prev.map(i => i.id === selectedItem.id ? { ...i, content: newContent } : i));
+    } catch (error) {
+      console.error("Failed to update item:", error);
+    }
+  };
+
   const selectedItem = history[selectedIndex];
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsActionsOpen(true);
+        return;
+      }
+
+      if (isActionsOpen || isEditOpen || isSettingsOpen) return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        invoke("hide_window").catch(console.error);
+        return;
+      }
+      
       if (history.length === 0) return;
 
       if (e.key === "ArrowDown") {
@@ -223,7 +270,7 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [history, selectedIndex, selectedItem]);
+  }, [history, selectedIndex, selectedItem, isActionsOpen, isEditOpen, isSettingsOpen]);
 
   // Auto-scroll to selected item
   useEffect(() => {
@@ -354,29 +401,12 @@ function App() {
     );
   };
 
-  const startDrag = async () => {
-    try {
-      // Suppress backend hide-on-blur while dragging
-      await invoke("suppress_hide", { ms: 4000 });
-      const onMouseUp = async () => {
-        window.removeEventListener("mouseup", onMouseUp);
-        // Clear suppression as soon as mouse released
-        await invoke("suppress_hide", { ms: 0 }).catch(() => {});
-      };
-      window.addEventListener("mouseup", onMouseUp);
-      await getCurrentWindow().startDragging();
-    } catch (err) {
-      console.error("Failed to start dragging", err);
-    }
-  };
-
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans">
       {/* Draggable Top Bar */}
       <div 
         data-tauri-drag-region 
         className="h-6 w-full bg-background flex items-center justify-center cursor-move z-50 hover:bg-accent/10 transition-colors shrink-0"
-        onMouseDown={startDrag}
       >
         <div className="w-12 h-1 rounded-full bg-muted-foreground/20 pointer-events-none" />
       </div>
@@ -555,14 +585,30 @@ function App() {
            
            <div className="w-px h-3 bg-border" />
            
-           <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground">Actions</span>
+           <div 
+             className="flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors"
+             onClick={() => setIsActionsOpen(true)}
+           >
+              <span className="text-muted-foreground hover:text-foreground">Actions</span>
               <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">⌘</span>K
+                <span className="text-xs">{cmdKey}</span>K
               </kbd>
            </div>
         </div>
       </div>
+      
+      <ActionsDialog 
+        open={isActionsOpen} 
+        onOpenChange={setIsActionsOpen} 
+        onAction={handleAction} 
+      />
+      
+      <EditDialog 
+        open={isEditOpen} 
+        onOpenChange={setIsEditOpen} 
+        initialContent={selectedItem?.content || ""} 
+        onSave={handleUpdate} 
+      />
     </div>
   );
 }

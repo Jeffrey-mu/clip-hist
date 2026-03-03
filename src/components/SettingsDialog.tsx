@@ -2,11 +2,8 @@
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -103,7 +100,6 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
   const [theme, setTheme] = useState("system");
   const [primaryAction, setPrimaryAction] = useState("copy");
   const [historyDuration, setHistoryDuration] = useState("3months");
-  const [ocrMode, setOcrMode] = useState("fast");
   const [showLinkPreview, setShowLinkPreview] = useState(true);
   const [updateHistoryOnAction, setUpdateHistoryOnAction] = useState(true);
   const [shortcut, setShortcut] = useState("CommandOrControl+D");
@@ -123,9 +119,6 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     // Load other preferences
     const savedTheme = localStorage.getItem("app-theme");
     if (savedTheme) setTheme(savedTheme);
-    
-    const savedOcr = localStorage.getItem("app-ocr");
-    if (savedOcr) setOcrMode(savedOcr);
 
     const savedHistoryDuration = localStorage.getItem("app-history-duration");
     if (savedHistoryDuration) setHistoryDuration(savedHistoryDuration);
@@ -135,10 +128,6 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
   useEffect(() => {
     localStorage.setItem("app-theme", theme);
   }, [theme]);
-  
-  useEffect(() => {
-    localStorage.setItem("app-ocr", ocrMode);
-  }, [ocrMode]);
 
   useEffect(() => {
     localStorage.setItem("app-history-duration", historyDuration);
@@ -264,18 +253,14 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-6 py-4 border-b shrink-0">
-          <DialogTitle className="text-xl">设置</DialogTitle>
-          <DialogDescription>
-            管理剪切板历史记录的首选项和行为。
-          </DialogDescription>
+      <DialogContent className="max-w-2xl h-[80vh] p-0 overflow-hidden">
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 overflow-y-auto">
-          <div className="px-6 py-6 space-y-8">
-            
-            {/* Appearance Section */}
+        <ScrollArea className="h-full px-6 py-4">
+          <div className="space-y-8 pb-8">
+            {/* Theme Section */}
             <section className="space-y-4">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">外观</h3>
               <RadioGroup 
@@ -362,20 +347,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
             <section className="space-y-6">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">高级</h3>
               
-              <div className="grid gap-2">
-                <Label className="text-base">文字识别 (OCR)</Label>
-                <p className="text-sm text-muted-foreground mb-2">启用后，自动从复制的图片中提取文字。使用高精度模式会增加 CPU 占用。</p>
-                <Select value={ocrMode} onValueChange={setOcrMode}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择模式" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="accurate">高精度</SelectItem>
-                    <SelectItem value="fast">快速</SelectItem>
-                    <SelectItem value="disabled">已禁用</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+  
 
               <div className="flex items-center justify-between space-x-4">
                 <div className="flex flex-col space-y-1">
@@ -445,15 +417,8 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
                     </Button>
                 </div>
             </section>
-
           </div>
         </ScrollArea>
-        
-        <DialogFooter className="px-6 py-4 border-t shrink-0">
-          <DialogClose asChild>
-            <Button variant="default" className="w-full sm:w-auto">完成</Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
