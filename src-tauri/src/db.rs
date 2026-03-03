@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::AppHandle;
+use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HistoryItem {
@@ -12,12 +12,15 @@ pub struct HistoryItem {
 }
 
 pub struct Database {
-    path: PathBuf,
+    conn: Mutex<Connection>,
 }
 
 impl Database {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: PathBuf) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn default_path() -> PathBuf {
@@ -25,12 +28,11 @@ impl Database {
         path.push("target");
         std::fs::create_dir_all(&path).expect("failed to create target dir");
         path.push("history-dev.db");
-        println!("Database path: {:?}", path);
         path
     }
 
     pub fn init(&self) -> Result<()> {
-        let conn = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "CREATE TABLE IF NOT EXISTS clipboard_history (
                 id INTEGER PRIMARY KEY,
@@ -41,29 +43,12 @@ impl Database {
             [],
         )?;
         
-        // Attempt to add 'item_type' column if it doesn't exist (migration)
-        // We use catch_unwind or simply ignore the error if column exists
-        // But better to check if column exists first? No, just try adding and ignore specific error.
-        // However, here we just log the error if it fails, which might be useful for debugging.
-        let result = conn.execute("ALTER TABLE clipboard_history ADD COLUMN item_type TEXT DEFAULT 'text'", []);
-        if let Err(e) = result {
-            // Only ignore "duplicate column name" error
-            // SQLite error code for this is usually generic operational error, so checking string is common
-            if !e.to_string().contains("duplicate column name") {
-                eprintln!("Migration warning (adding item_type): {}", e);
-            }
-        }
-        
-        // Also try to migrate old 'type' column to 'item_type' if needed? 
-        // For now, let's just stick to 'item_type'. 
-        // If user already has 'type' column from my previous failed attempt, it's fine, we just ignore it.
-        
+        let _ = conn.execute("ALTER TABLE clipboard_history ADD COLUMN item_type TEXT DEFAULT 'text'", []);
         Ok(())
     }
 
     pub fn insert(&self, content: &str, item_type: &str) -> Result<()> {
-        let conn = Connection::open(&self.path)?;
-        // If exists, update timestamp to bring to top
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO clipboard_history (content, item_type, created_at) VALUES (?1, ?2, datetime('now'))
              ON CONFLICT(content) DO UPDATE SET created_at = datetime('now'), item_type = ?2",
@@ -73,9 +58,8 @@ impl Database {
     }
 
     pub fn get_history(&self, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>> {
-        let conn = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         
-        // Use datetime(created_at, 'localtime') to convert UTC storage to local time for display
         let mut query = "SELECT id, content, item_type, datetime(created_at, 'localtime') as created_at FROM clipboard_history".to_string();
         let mut where_clauses = Vec::new();
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
@@ -118,13 +102,13 @@ impl Database {
     }
 
     pub fn delete_all(&self) -> Result<()> {
-        let conn = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM clipboard_history", [])?;
         Ok(())
     }
 
     pub fn get_all_for_export(&self) -> Result<Vec<HistoryItem>> {
-        let conn = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT id, content, item_type, created_at FROM clipboard_history ORDER BY created_at DESC")?;
         let rows = stmt.query_map([], |row| {
              Ok(HistoryItem {
@@ -138,7 +122,7 @@ impl Database {
     }
 
     pub fn import_item(&self, item: &HistoryItem) -> Result<()> {
-        let conn = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO clipboard_history (content, item_type, created_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(content) DO UPDATE SET created_at = ?3, item_type = ?2",
@@ -148,7 +132,7 @@ impl Database {
     }
 
     pub fn delete_before(&self, cutoff_date: &str) -> Result<()> {
-        let conn: Connection = Connection::open(&self.path)?;
+        let conn = self.conn.lock().unwrap();
         conn.execute(
             "DELETE FROM clipboard_history WHERE created_at < ?",
             params![cutoff_date],
