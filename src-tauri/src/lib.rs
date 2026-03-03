@@ -28,7 +28,7 @@ struct GlobalShortcutState(Mutex<Option<String>>);
 struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
 struct HideSuppressState(Mutex<Option<Instant>>);
 
-fn move_window_to_mouse_monitor(_window: &WebviewWindow) -> Result<(), String> {
+fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // 1. Get mouse location from Tauri directly instead of Cocoa
@@ -305,7 +305,7 @@ fn get_history(
 }
 
 #[tauri::command]
-fn copy_item(app: AppHandle, content: String) -> Result<(), String> {
+fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Result<(), String> {
     clipboard::copy_to_clipboard(&content)?;
 
     if let Some(window) = app.get_webview_window("main") {
@@ -315,6 +315,20 @@ fn copy_item(app: AppHandle, content: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let _ = app.hide();
+
+        // Simulate Paste (Cmd+V) if requested
+        if should_paste.unwrap_or(false) {
+            // We need to wait a bit for the previous app to regain focus
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(150));
+
+                // Use AppleScript to simulate keystroke
+                // tell application "System Events" to keystroke "v" using command down
+                let _ = std::process::Command::new("osascript")
+                    .args(&["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
+                    .output();
+            });
+        }
     }
 
     Ok(())

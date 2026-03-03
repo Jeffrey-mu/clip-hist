@@ -227,13 +227,16 @@ function App() {
 
   const handleCopy = async (item: HistoryItem) => {
     try {
+      const primaryAction = localStorage.getItem("primaryAction") || "paste";
+      const shouldPaste = primaryAction === "paste";
+
       if (item.item_type === 'file') {
         // Support single path or multi-path separated by newlines/semicolons
         const parts = item.content.split(/\r?\n|;\s*/).map(s => s.trim()).filter(Boolean);
         const paths = parts.length > 0 ? parts : [item.content];
         await invoke("copy_files", { paths });
       } else {
-        await invoke("copy_item", { content: item.content });
+        await invoke("copy_item", { content: item.content, shouldPaste });
         // Window is hidden by the backend command
       }
     } catch (error) {

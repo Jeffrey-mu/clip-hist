@@ -96,58 +96,64 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsDialogProps) {
-  // Local state for settings (in a real app, these would be persisted)
+  // Local state for settings
   const [theme, setTheme] = useState("system");
-  const [primaryAction, setPrimaryAction] = useState("copy");
-  const [historyDuration, setHistoryDuration] = useState("3months");
+  const [historyDuration, setHistoryDuration] = useState("3");
+  const [autostart, setAutostart] = useState(false);
+  const [globalShortcut, setGlobalShortcut] = useState("CommandOrControl+Shift+V");
+  const [primaryAction, setPrimaryAction] = useState("paste");
   const [showLinkPreview, setShowLinkPreview] = useState(true);
   const [updateHistoryOnAction, setUpdateHistoryOnAction] = useState(true);
-  const [shortcut, setShortcut] = useState("CommandOrControl+D");
-  const [autoStart, setAutoStart] = useState(false);
 
-  // Load shortcut and settings from storage on mount
   useEffect(() => {
-    // Autostart status
-    isEnabled().then(setAutoStart).catch(console.error);
+    // Load settings from localStorage
+    setTheme(localStorage.getItem("theme") || "system");
+    setHistoryDuration(localStorage.getItem("historyDuration") || "3");
+    setPrimaryAction(localStorage.getItem("primaryAction") || "paste");
+    setGlobalShortcut(localStorage.getItem("globalShortcut") || "CommandOrControl+D");
+    setShowLinkPreview(localStorage.getItem("showLinkPreview") !== "false");
+    setUpdateHistoryOnAction(localStorage.getItem("updateHistoryOnAction") !== "false");
 
-    const saved = localStorage.getItem("app-shortcut");
-    if (saved) {
-      setShortcut(saved);
-      invoke("update_shortcut", { shortcut: saved }).catch(console.error);
+    // Check autostart status
+    isEnabled().then(setAutostart).catch(console.error);
+  }, [open]);
+
+  const handleThemeChange = (value: string) => {
+    setTheme(value);
+    localStorage.setItem("theme", value);
+    // Apply theme
+    const root = window.document.documentElement;
+    root.classList.remove("light", "dark");
+    if (value === "system") {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(value);
     }
-    
-    // Load other preferences
-    const savedTheme = localStorage.getItem("app-theme");
-    if (savedTheme) setTheme(savedTheme);
+  };
 
-    const savedHistoryDuration = localStorage.getItem("app-history-duration");
-    if (savedHistoryDuration) setHistoryDuration(savedHistoryDuration);
-  }, []);
+  const handlePrimaryActionChange = (value: string) => {
+    setPrimaryAction(value);
+    localStorage.setItem("primaryAction", value);
+  };
 
-  // Save preferences when they change
-  useEffect(() => {
-    localStorage.setItem("app-theme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem("app-history-duration", historyDuration);
+  const handleHistoryDurationChange = (value: string) => {
+    setHistoryDuration(value);
+    localStorage.setItem("historyDuration", value);
     
     // Auto-cleanup based on duration
-    if (historyDuration !== "forever") {
+    if (value !== "0") { // 0 means forever
       const cleanup = async () => {
         const now = new Date();
         let cutoff = new Date();
         
-        switch (historyDuration) {
-          case "1day": cutoff.setDate(now.getDate() - 1); break;
-          case "7days": cutoff.setDate(now.getDate() - 7); break;
-          case "30days": cutoff.setDate(now.getDate() - 30); break;
-          case "3months": cutoff.setMonth(now.getMonth() - 3); break;
-          case "1year": cutoff.setFullYear(now.getFullYear() - 1); break;
+        switch (value) {
+          case "1": cutoff.setDate(now.getDate() - 1); break;
+          case "7": cutoff.setDate(now.getDate() - 7); break;
+          case "30": cutoff.setDate(now.getDate() - 30); break;
+          case "90": cutoff.setMonth(now.getMonth() - 3); break;
         }
         
-        // SQLite expects 'YYYY-MM-DD HH:MM:SS' or ISO8601
-        // created_at is stored via datetime('now') in SQLite which is UTC 'YYYY-MM-DD HH:MM:SS'
         const cutoffStr = cutoff.toISOString().replace('T', ' ').split('.')[0];
         try {
           await invoke("delete_before", { cutoffDate: cutoffStr });
@@ -157,20 +163,8 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
       };
       cleanup();
     }
-  }, [historyDuration]);
-
-  const handleShortcutChange = async (newShortcut: string) => {
-    try {
-      await invoke("update_shortcut", { shortcut: newShortcut });
-      setShortcut(newShortcut);
-      localStorage.setItem("app-shortcut", newShortcut);
-    } catch (e) {
-      console.error("Failed to update shortcut:", e);
-      // For now, simple alert. In a real app, use a Toast.
-      alert(`无法注册快捷键 "${newShortcut}": ${e}`);
-    }
   };
-  
+
   const handleAutoStartChange = async (checked: boolean) => {
     try {
       if (checked) {
@@ -178,10 +172,31 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
       } else {
         await disable();
       }
-      setAutoStart(checked);
+      setAutostart(checked);
     } catch (e) {
       console.error("Failed to toggle autostart:", e);
     }
+  };
+
+  const handleShortcutChange = async (newShortcut: string) => {
+    try {
+      await invoke("update_shortcut", { shortcut: newShortcut });
+      setGlobalShortcut(newShortcut);
+      localStorage.setItem("globalShortcut", newShortcut);
+    } catch (e) {
+      console.error("Failed to update shortcut:", e);
+      alert(`无法注册快捷键 "${newShortcut}": ${e}`);
+    }
+  };
+
+  const handleShowLinkPreviewChange = (checked: boolean) => {
+    setShowLinkPreview(checked);
+    localStorage.setItem("showLinkPreview", String(checked));
+  };
+
+  const handleUpdateHistoryOnActionChange = (checked: boolean) => {
+    setUpdateHistoryOnAction(checked);
+    localStorage.setItem("updateHistoryOnAction", String(checked));
   };
   
   const handleExport = async () => {
@@ -193,7 +208,6 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
       
       if (path) {
         await invoke("export_data", { path });
-        // Optional: Show success toast
       }
     } catch (e) {
       console.error("Export failed:", e);
@@ -209,7 +223,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
       
       if (path) {
         await invoke("import_data", { path });
-        onOpenChange(false); // Close settings to see updated list
+        onOpenChange(false);
       }
     } catch (e) {
       console.error("Import failed:", e);
@@ -236,15 +250,12 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     }
   };
 
-  // Effect to apply theme (mock implementation)
+  // Effect to apply theme
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
-    
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       root.classList.add(systemTheme);
     } else {
       root.classList.add(theme);
@@ -266,7 +277,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
               <RadioGroup 
                 defaultValue="system" 
                 value={theme}
-                onValueChange={setTheme}
+                onValueChange={handleThemeChange}
                 className="grid grid-cols-3 gap-4"
               >
                 <div>
@@ -308,36 +319,73 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
             <section className="space-y-6">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">通用</h3>
               
-              <div className="grid gap-2">
-                <Label className="text-base">主要操作</Label>
-                <p className="text-sm text-muted-foreground mb-2">按下回车键或双击条目时执行的操作。</p>
-                <Select value={primaryAction} onValueChange={setPrimaryAction}>
-                  <SelectTrigger className="w-full">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">主要操作</Label>
+                  <p className="text-sm text-muted-foreground">按下回车键或双击条目时执行的操作</p>
+                </div>
+                <Select value={primaryAction} onValueChange={handlePrimaryActionChange}>
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="选择操作" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="copy">复制到剪切板</SelectItem>
                     <SelectItem value="paste">粘贴到活动应用</SelectItem>
+                    <SelectItem value="copy">仅复制到剪切板</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="grid gap-2">
-                <Label className="text-base">历史保留时间</Label>
-                <p className="text-sm text-muted-foreground mb-2">超过此时间的剪切板记录将被自动删除。</p>
-                <Select value={historyDuration} onValueChange={setHistoryDuration}>
-                  <SelectTrigger className="w-full">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">开机自启</Label>
+                  <p className="text-sm text-muted-foreground">系统启动时自动运行应用</p>
+                </div>
+                <Switch 
+                  checked={autostart} 
+                  onCheckedChange={handleAutoStartChange}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">全局快捷键</Label>
+                  <p className="text-sm text-muted-foreground">快速唤出剪切板历史</p>
+                </div>
+                <ShortcutRecorder value={globalShortcut} onChange={handleShortcutChange} />
+              </div>
+            </section>
+
+            <Separator />
+
+            {/* Storage Section */}
+            <section className="space-y-6">
+              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">存储</h3>
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">历史保留时间</Label>
+                  <p className="text-sm text-muted-foreground">超过此时间的剪切板记录将被自动删除</p>
+                </div>
+                <Select value={historyDuration} onValueChange={handleHistoryDurationChange}>
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="选择时间" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1day">1 天</SelectItem>
-                    <SelectItem value="7days">7 天</SelectItem>
-                    <SelectItem value="30days">30 天</SelectItem>
-                    <SelectItem value="3months">3 个月</SelectItem>
-                    <SelectItem value="1year">1 年</SelectItem>
-                    <SelectItem value="forever">永久</SelectItem>
+                    <SelectItem value="1">1 天</SelectItem>
+                    <SelectItem value="7">7 天</SelectItem>
+                    <SelectItem value="30">30 天</SelectItem>
+                    <SelectItem value="90">3 个月</SelectItem>
+                    <SelectItem value="0">永久</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium flex items-center gap-2"><Trash2 className="w-4 h-4"/> 清除历史记录</span>
+                  <span className="text-sm text-muted-foreground">永久删除所有剪切板历史记录。</span>
+                </div>
+                <Button variant="destructive" size="sm" onClick={handleClearHistoryClick}>全部清除</Button>
               </div>
             </section>
 
@@ -347,8 +395,6 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
             <section className="space-y-6">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">高级</h3>
               
-  
-
               <div className="flex items-center justify-between space-x-4">
                 <div className="flex flex-col space-y-1">
                   <Label className="text-base">显示链接预览</Label>
@@ -356,7 +402,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
                     启用后，将获取并显示链接的社交卡片图片。
                   </p>
                 </div>
-                <Switch checked={showLinkPreview} onCheckedChange={setShowLinkPreview} />
+                <Switch checked={showLinkPreview} onCheckedChange={handleShowLinkPreviewChange} />
               </div>
 
               <div className="flex items-center justify-between space-x-4">
@@ -366,43 +412,10 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
                     启用后，复制或粘贴条目时将其移动到历史记录顶部。
                   </p>
                 </div>
-                <Switch checked={updateHistoryOnAction} onCheckedChange={setUpdateHistoryOnAction} />
+                <Switch checked={updateHistoryOnAction} onCheckedChange={handleUpdateHistoryOnActionChange} />
               </div>
             </section>
             
-            <Separator />
-            
-            {/* System Section */}
-             <section className="space-y-6">
-              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">系统</h3>
-              
-              <div className="flex items-center justify-between space-x-4">
-                <div className="flex flex-col space-y-1">
-                  <Label className="text-base">开机自动启动</Label>
-                  <p className="text-sm text-muted-foreground">
-                    登录系统时自动启动应用。
-                  </p>
-                </div>
-                <Switch checked={autoStart} onCheckedChange={handleAutoStartChange} />
-              </div>
-
-               <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium flex items-center gap-2"><Trash2 className="w-4 h-4"/> 清除历史记录</span>
-                  <span className="text-sm text-muted-foreground">永久删除所有剪切板历史记录。</span>
-                </div>
-                <Button variant="destructive" size="sm" onClick={handleClearHistoryClick}>全部清除</Button>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium flex items-center gap-2"><Keyboard className="w-4 h-4"/> 全局快捷键</span>
-                  <span className="text-sm text-muted-foreground">显示/隐藏窗口</span>
-                </div>
-                <ShortcutRecorder value={shortcut} onChange={handleShortcutChange} />
-              </div>
-            </section>
-
             <Separator />
 
             {/* Data Management Section */}

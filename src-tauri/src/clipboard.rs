@@ -8,8 +8,27 @@ use std::io::Cursor;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(target_os = "macos")]
+use cocoa::appkit::NSPasteboard;
+#[cfg(target_os = "macos")]
+use cocoa::base::nil;
+#[cfg(target_os = "macos")]
+use cocoa::foundation::NSInteger;
+
 #[cfg(target_os = "windows")]
 use clipboard_win::{formats as win_formats, get_clipboard, Format};
+
+fn get_clipboard_change_count() -> Option<i64> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let pasteboard = NSPasteboard::generalPasteboard(nil);
+        Some(pasteboard.changeCount() as i64)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
 
 pub fn start_listener(app: AppHandle) {
     // Get database state (thread-safe handle)
@@ -42,9 +61,19 @@ pub fn start_listener(app: AppHandle) {
 
         let mut last_content = String::new();
         let mut last_image_hash: Option<u64> = None;
+        let mut last_change_count: Option<i64> = None;
 
         loop {
             thread::sleep(Duration::from_millis(500));
+
+            // Check for clipboard updates (macOS optimization)
+            let current_change_count = get_clipboard_change_count();
+            if let Some(count) = current_change_count {
+                if Some(count) == last_change_count {
+                    continue;
+                }
+                last_change_count = Some(count);
+            }
 
             let mut new_content: Option<(String, String)> = None;
             let mut image_found = false;
@@ -66,6 +95,7 @@ pub fn start_listener(app: AppHandle) {
                         let joined = files.join("\n");
                         if joined != last_content {
                             new_content = Some((joined, "file".to_string()));
+                            last_image_hash = None;
                         }
                     }
                 }
@@ -127,6 +157,7 @@ pub fn start_listener(app: AppHandle) {
                     if text != last_content && !text.trim().is_empty() {
                         let type_ = detect_type(&text);
                         new_content = Some((text, type_));
+                        last_image_hash = None;
                     }
                 }
             }
