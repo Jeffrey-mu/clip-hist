@@ -21,11 +21,14 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow}
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+#[cfg(target_os = "windows")]
+use clipboard_win::{formats, Setter, Clipboard};
+
 struct GlobalShortcutState(Mutex<Option<String>>);
 struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
 struct HideSuppressState(Mutex<Option<Instant>>);
 
-fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
+fn move_window_to_mouse_monitor(_window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // 1. Get mouse location from Tauri directly instead of Cocoa
@@ -323,6 +326,23 @@ fn clear_history(app: AppHandle, db: State<'_, Database>) -> Result<(), String> 
     // Emit event to update UI
     let _ = app.emit("clipboard-changed", ());
     Ok(())
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn copy_files(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+    let _clip = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+    formats::FileList.write_clipboard(paths.as_slice()).map_err(|e| e.to_string())?;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+fn copy_files(_app: AppHandle, _paths: Vec<String>) -> Result<(), String> {
+    Err("copy_files is only supported on Windows currently".into())
 }
 
 #[tauri::command]
@@ -637,7 +657,8 @@ pub fn run() {
             suppress_hide,
             delete_item,
             update_item,
-            hide_window
+            hide_window,
+            copy_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

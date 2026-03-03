@@ -55,6 +55,33 @@ function App() {
 
   const [osType, setOsType] = useState<string>("");
 
+  // Refs for current state to use in callbacks/effects
+  const historyRef = useRef(history);
+  const selectedIndexRef = useRef(selectedIndex);
+  const isActionsOpenRef = useRef(isActionsOpen);
+  const isEditOpenRef = useRef(isEditOpen);
+  const isSettingsOpenRef = useRef(isSettingsOpen);
+  
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
+
+  useEffect(() => {
+    isActionsOpenRef.current = isActionsOpen;
+  }, [isActionsOpen]);
+
+  useEffect(() => {
+    isEditOpenRef.current = isEditOpen;
+  }, [isEditOpen]);
+
+  useEffect(() => {
+    isSettingsOpenRef.current = isSettingsOpen;
+  }, [isSettingsOpen]);
+
   // Stable reference to history length for fetchHistory
   const historyLengthRef = useRef(0);
   useEffect(() => {
@@ -69,9 +96,14 @@ function App() {
   const isMac = osType === "macos";
   const cmdKey = isMac ? "⌘" : "Ctrl";
 
-  const fetchHistory = async (isReset = false) => {
+  const fetchHistory = async (isReset = false, preserveSelection = false) => {
     if (isLoading && !isReset) return;
     setIsLoading(true);
+
+    // Capture current selection state before async call
+    const currentHistory = historyRef.current;
+    const currentIndex = selectedIndexRef.current;
+    const currentSelectedId = currentHistory[currentIndex]?.id;
 
     try {
       const offset = isReset ? 0 : historyLengthRef.current;
@@ -91,8 +123,22 @@ function App() {
 
       if (isReset) {
         setHistory(items);
-        // Reset selection to top
-        setSelectedIndex(0);
+        
+        if (preserveSelection && currentSelectedId) {
+          // Try to find the previously selected item by ID
+          const newIndex = items.findIndex(item => item.id === currentSelectedId);
+          if (newIndex !== -1) {
+            setSelectedIndex(newIndex);
+          } else {
+            // If item moved out of view or deleted, try to keep index roughly same but clamped
+            // Or just reset to 0 if totally lost?
+            // Usually keeping index is better UX than jumping to 0 if item is gone.
+            setSelectedIndex(Math.min(currentIndex, Math.max(0, items.length - 1)));
+          }
+        } else {
+          // Reset selection to top
+          setSelectedIndex(0);
+        }
       } else {
         setHistory((prev) => [...prev, ...items]);
       }
@@ -105,7 +151,7 @@ function App() {
 
   // Initial load, Search, and Filter change
   useEffect(() => {
-    fetchHistory(true);
+    fetchHistory(true, false);
   }, [search, filterType]);
 
   // Run history cleanup on app start and set defaults
@@ -138,7 +184,8 @@ function App() {
   // Listen for clipboard changes
   useEffect(() => {
     const unlistenPromise = listen("clipboard-changed", (_) => {
-      fetchHistory(true);
+      // Pass true to preserve selection on clipboard update
+      fetchHistory(true, true);
     });
     
     // Auto-focus input when window gains focus
@@ -180,8 +227,15 @@ function App() {
 
   const handleCopy = async (item: HistoryItem) => {
     try {
-      await invoke("copy_item", { content: item.content });
-      // Window is hidden by the backend command
+      if (item.item_type === 'file') {
+        // Support single path or multi-path separated by newlines/semicolons
+        const parts = item.content.split(/\r?\n|;\s*/).map(s => s.trim()).filter(Boolean);
+        const paths = parts.length > 0 ? parts : [item.content];
+        await invoke("copy_files", { paths });
+      } else {
+        await invoke("copy_item", { content: item.content });
+        // Window is hidden by the backend command
+      }
     } catch (error) {
       console.error("Failed to copy:", error);
     }
@@ -236,13 +290,14 @@ function App() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Use refs to check if dialogs are open
+      if (isActionsOpenRef.current || isEditOpenRef.current || isSettingsOpenRef.current) return;
+
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setIsActionsOpen(true);
         return;
       }
-
-      if (isActionsOpen || isEditOpen || isSettingsOpen) return;
 
       if (e.key === "Escape") {
         e.preventDefault();
@@ -262,15 +317,19 @@ function App() {
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (selectedItem) {
-          handleCopy(selectedItem);
+        // Use ref for current selection
+        const currentHistory = historyRef.current;
+        const currentIndex = selectedIndexRef.current;
+        const item = currentHistory[currentIndex];
+        if (item) {
+          handleCopy(item);
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [history, selectedIndex, selectedItem, isActionsOpen, isEditOpen, isSettingsOpen]);
+  }, [history.length]); // Only re-bind if history length changes significantly? Actually refs handle most state.
 
   // Auto-scroll to selected item
   useEffect(() => {

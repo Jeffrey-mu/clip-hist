@@ -8,6 +8,8 @@ use std::io::Cursor;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(target_os = "windows")]
+use clipboard_win::{formats as win_formats, get_clipboard, Format};
 
 pub fn start_listener(app: AppHandle) {
     // Get database state (thread-safe handle)
@@ -46,8 +48,31 @@ pub fn start_listener(app: AppHandle) {
 
             let mut new_content: Option<(String, String)> = None;
             let mut image_found = false;
+            #[allow(unused_mut)]
+            let mut files_found = false;
+
+            // 0. Windows: Try to get file list (CF_HDROP)
+            #[cfg(target_os = "windows")]
+            {
+                if win_formats::FileList.is_format_avail() {
+                    let mut files: Vec<String> = Vec::new();
+                    // Attempt to read files using get_clipboard which handles opening/closing
+                    if let Ok(f) = get_clipboard(win_formats::FileList) {
+                        files = f;
+                    }
+                    
+                    if !files.is_empty() {
+                        files_found = true;
+                        let joined = files.join("\n");
+                        if joined != last_content {
+                            new_content = Some((joined, "file".to_string()));
+                        }
+                    }
+                }
+            }
 
             // 1. Try to get Image first
+            if new_content.is_none() && !files_found {
             if let Ok(img_data) = clipboard.get_image() {
                 if img_data.width > 0 && img_data.height > 0 {
                     // Calculate hash of image data to avoid expensive processing if unchanged
@@ -94,9 +119,10 @@ pub fn start_listener(app: AppHandle) {
                     }
                 }
             }
+            }
 
             // 2. If no image detected, check text
-            if !image_found {
+            if new_content.is_none() && !image_found && !files_found {
                 if let Ok(text) = clipboard.get_text() {
                     if text != last_content && !text.trim().is_empty() {
                         let type_ = detect_type(&text);

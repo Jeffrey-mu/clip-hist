@@ -41,6 +41,9 @@ export function ActionsDialog({ open, onOpenChange, onAction }: ActionsDialogPro
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Stop propagation to prevent global listeners (like main window hide)
+      e.stopPropagation();
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev + 1) % actions.length);

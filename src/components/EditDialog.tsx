@@ -16,25 +16,42 @@ export function EditDialog({ open, onOpenChange, initialContent, onSave }: EditD
     setContent(initialContent);
   }, [initialContent, open]);
 
-  const handleSave = () => {
-    onSave(content);
-    onOpenChange(false);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation(); // Stop propagation to prevent global window hide
+    
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSave();
     } else if (e.key === "Escape") {
-      // Normally Dialog handles Escape, but if focus is in textarea it might be trapped or we want explicit behavior
       e.preventDefault();
       onOpenChange(false);
     }
   };
 
+  const handleSave = () => {
+    onSave(content);
+    onOpenChange(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] h-[500px] flex flex-col gap-4" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent 
+        className="sm:max-w-[600px] h-[500px] flex flex-col gap-4" 
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+           // Prevent default Radix behavior if needed, but more importantly stop propagation
+           // Actually Radix handles escape, we just need to ensure it doesn't bubble to window
+           // But Radix portals might bubble?
+           // The safest way is to ensure App.tsx ignores it.
+           // e.preventDefault(); // If we want to handle it manually
+        }}
+        onKeyDown={(e) => {
+            // Catch escape bubbling from DialogContent if not caught by textarea
+            if (e.key === "Escape") {
+                e.stopPropagation();
+            }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Edit Content</DialogTitle>
         </DialogHeader>
