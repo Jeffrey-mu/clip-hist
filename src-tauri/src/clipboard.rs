@@ -89,28 +89,29 @@ pub fn start_listener(app: AppHandle) {
 }
 
 fn detect_type(text: &str) -> String {
-    if text.starts_with("http://") || text.starts_with("https://") {
+    let trimmed = text.trim();
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         return "link".to_string();
     }
     // Hex color: #RRGGBB or #RGB
-    if text.starts_with("#") {
-        let hex = &text[1..];
+    if trimmed.starts_with("#") {
+        let hex = &trimmed[1..];
         if (hex.len() == 6 || hex.len() == 3) && hex.chars().all(|c| c.is_ascii_hexdigit()) {
             return "color".to_string();
         }
     }
     // RGB/RGBA
-    if text.starts_with("rgb(") || text.starts_with("rgba(") {
+    if trimmed.starts_with("rgb(") || trimmed.starts_with("rgba(") {
         return "color".to_string();
     }
     // File URL
-    if text.starts_with("file://") {
+    if trimmed.starts_with("file://") {
         return "file".to_string();
     }
     // File path (simple check)
     // Check for absolute path on Unix (/) or Windows (C:\)
-    if text.starts_with("/") || (text.len() > 2 && text.chars().nth(1) == Some(':')) {
-        let path = std::path::Path::new(text);
+    if trimmed.starts_with("/") || (trimmed.len() > 2 && trimmed.chars().nth(1) == Some(':')) {
+        let path = std::path::Path::new(trimmed);
         if path.exists() {
             return "file".to_string();
         }

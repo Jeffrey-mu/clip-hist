@@ -106,7 +106,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
   const [ocrMode, setOcrMode] = useState("fast");
   const [showLinkPreview, setShowLinkPreview] = useState(true);
   const [updateHistoryOnAction, setUpdateHistoryOnAction] = useState(true);
-  const [shortcut, setShortcut] = useState("CommandOrControl+Shift+V");
+  const [shortcut, setShortcut] = useState("CommandOrControl+D");
   const [autoStart, setAutoStart] = useState(false);
 
   // Load shortcut and settings from storage on mount
@@ -126,6 +126,9 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     
     const savedOcr = localStorage.getItem("app-ocr");
     if (savedOcr) setOcrMode(savedOcr);
+
+    const savedHistoryDuration = localStorage.getItem("app-history-duration");
+    if (savedHistoryDuration) setHistoryDuration(savedHistoryDuration);
   }, []);
 
   // Save preferences when they change
@@ -136,6 +139,36 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
   useEffect(() => {
     localStorage.setItem("app-ocr", ocrMode);
   }, [ocrMode]);
+
+  useEffect(() => {
+    localStorage.setItem("app-history-duration", historyDuration);
+    
+    // Auto-cleanup based on duration
+    if (historyDuration !== "forever") {
+      const cleanup = async () => {
+        const now = new Date();
+        let cutoff = new Date();
+        
+        switch (historyDuration) {
+          case "1day": cutoff.setDate(now.getDate() - 1); break;
+          case "7days": cutoff.setDate(now.getDate() - 7); break;
+          case "30days": cutoff.setDate(now.getDate() - 30); break;
+          case "3months": cutoff.setMonth(now.getMonth() - 3); break;
+          case "1year": cutoff.setFullYear(now.getFullYear() - 1); break;
+        }
+        
+        // SQLite expects 'YYYY-MM-DD HH:MM:SS' or ISO8601
+        // created_at is stored via datetime('now') in SQLite which is UTC 'YYYY-MM-DD HH:MM:SS'
+        const cutoffStr = cutoff.toISOString().replace('T', ' ').split('.')[0];
+        try {
+          await invoke("delete_before", { cutoffDate: cutoffStr });
+        } catch (e) {
+          console.error("Auto cleanup failed:", e);
+        }
+      };
+      cleanup();
+    }
+  }, [historyDuration]);
 
   const handleShortcutChange = async (newShortcut: string) => {
     try {

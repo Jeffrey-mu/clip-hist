@@ -26,6 +26,8 @@ import {
   Settings,
 } from "lucide-react";
 
+import { enable, isEnabled } from "@tauri-apps/plugin-autostart";
+
 interface HistoryItem {
   id: number;
   content: string;
@@ -59,11 +61,12 @@ function App() {
 
     try {
       const offset = isReset ? 0 : historyLengthRef.current;
+      // console.log('Fetching history with filter:', filterType);
       const items = await invoke<HistoryItem[]>("get_history", { 
         limit: 15, 
         offset,
         search,
-        filter_type: filterType 
+        filterType // Changed from filter_type to match Tauri's camelCase mapping
       });
 
       if (items.length < 15) {
@@ -90,6 +93,48 @@ function App() {
   useEffect(() => {
     fetchHistory(true);
   }, [search, filterType]);
+
+  // Run history cleanup on app start and set defaults
+  useEffect(() => {
+    // 1. History Cleanup
+    const savedDuration = localStorage.getItem("app-history-duration") || "3months";
+    if (savedDuration !== "forever") {
+      const cleanup = async () => {
+        const now = new Date();
+        let cutoff = new Date();
+        
+        switch (savedDuration) {
+          case "1day": cutoff.setDate(now.getDate() - 1); break;
+          case "7days": cutoff.setDate(now.getDate() - 7); break;
+          case "30days": cutoff.setDate(now.getDate() - 30); break;
+          case "3months": cutoff.setMonth(now.getMonth() - 3); break;
+          case "1year": cutoff.setFullYear(now.getFullYear() - 1); break;
+        }
+        
+        // SQLite expects 'YYYY-MM-DD HH:MM:SS' or ISO8601 (UTC)
+        const cutoffStr = cutoff.toISOString().replace('T', ' ').split('.')[0];
+        try {
+          await invoke("delete_before", { cutoffDate: cutoffStr });
+        } catch (e) {
+          console.error("Startup cleanup failed:", e);
+        }
+      };
+      cleanup();
+    }
+
+    // 2. Auto-start default (enable on first run)
+    const autostartConfigured = localStorage.getItem("autostart-configured");
+    if (!autostartConfigured) {
+      isEnabled().then(enabled => {
+        if (!enabled) {
+          enable().then(() => {
+            console.log("Auto-start enabled by default");
+            localStorage.setItem("autostart-configured", "true");
+          }).catch(console.error);
+        }
+      });
+    }
+  }, []);
 
   // Listen for clipboard changes
   useEffect(() => {

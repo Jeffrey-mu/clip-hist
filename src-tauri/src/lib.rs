@@ -374,17 +374,25 @@ fn import_data(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn delete_before(app: AppHandle, cutoff_date: String) -> Result<(), String> {
+    let db = Database::new(&app);
+    db.delete_before(&cutoff_date).map_err(|e| e.to_string())?;
+    let _ = app.emit("clipboard-changed", ());
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![])))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(GlobalShortcutState(Mutex::new(Some("CommandOrControl+Shift+V".into()))))
+        .manage(GlobalShortcutState(Mutex::new(Some("CommandOrControl+D".into()))))
         .manage(WindowPositionState(Mutex::new(HashMap::new())))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut("CommandOrControl+Shift+V")
+                .with_shortcut("CommandOrControl+D")
                 .expect("Failed to register global shortcut")
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
@@ -485,7 +493,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_history, copy_item, clear_history, update_shortcut, export_data, import_data])
+        .invoke_handler(tauri::generate_handler![get_history, copy_item, clear_history, update_shortcut, export_data, import_data, delete_before])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

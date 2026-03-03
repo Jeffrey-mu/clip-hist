@@ -74,7 +74,8 @@ impl Database {
     pub fn get_history(&self, limit: usize, offset: usize, search: Option<String>, filter_type: Option<String>) -> Result<Vec<HistoryItem>> {
         let conn = Connection::open(&self.path)?;
         
-        let mut query = "SELECT id, content, item_type, created_at FROM clipboard_history".to_string();
+        // Use datetime(created_at, 'localtime') to convert UTC storage to local time for display
+        let mut query = "SELECT id, content, item_type, datetime(created_at, 'localtime') as created_at FROM clipboard_history".to_string();
         let mut where_clauses = Vec::new();
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -141,6 +142,15 @@ impl Database {
             "INSERT INTO clipboard_history (content, item_type, created_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(content) DO UPDATE SET created_at = ?3, item_type = ?2",
             params![item.content, item.item_type, item.created_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_before(&self, cutoff_date: &str) -> Result<()> {
+        let conn: Connection = Connection::open(&self.path)?;
+        conn.execute(
+            "DELETE FROM clipboard_history WHERE created_at < ?",
+            params![cutoff_date],
         )?;
         Ok(())
     }
