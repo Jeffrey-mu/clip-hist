@@ -29,6 +29,9 @@ struct WindowPositionState(Mutex<HashMap<String, PhysicalPosition<i32>>>);
 struct HideSuppressState(Mutex<Option<Instant>>);
 
 fn move_window_to_mouse_monitor(window: &WebviewWindow) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+
     #[cfg(target_os = "macos")]
     {
         // 1. Get mouse location from Tauri directly instead of Cocoa
@@ -305,9 +308,15 @@ fn get_history(
 }
 
 #[tauri::command]
-fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Result<(), String> {
-    clipboard::copy_to_clipboard(&content)?;
+fn get_item_content(db: State<'_, Database>, id: i64) -> Result<String, String> {
+    match db.get_item(id) {
+        Ok(Some(item)) => Ok(item.content),
+        Ok(None) => Err("Item not found".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
 
+fn handle_paste_and_hide(app: &AppHandle, should_paste: bool) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
     }
@@ -317,7 +326,7 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
         let _ = app.hide();
 
         // Simulate Paste (Cmd+V) if requested
-        if should_paste.unwrap_or(false) {
+        if should_paste {
             // We need to wait a bit for the previous app to regain focus
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_millis(150));
@@ -333,7 +342,7 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
 
     #[cfg(target_os = "windows")]
     {
-        if should_paste.unwrap_or(false) {
+        if should_paste {
             std::thread::spawn(|| {
                 // Give time for window to hide and previous app to focus
                 std::thread::sleep(std::time::Duration::from_millis(150));
@@ -348,8 +357,46 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
             });
         }
     }
+}
 
+#[tauri::command]
+fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Result<(), String> {
+    clipboard::copy_to_clipboard(&content)?;
+    handle_paste_and_hide(&app, should_paste.unwrap_or(false));
     Ok(())
+}
+
+#[tauri::command]
+fn copy_history_item(app: AppHandle, db: State<'_, Database>, id: i64, should_paste: Option<bool>) -> Result<(), String> {
+    match db.get_item(id) {
+        Ok(Some(item)) => {
+            if item.item_type == "file" {
+                #[cfg(target_os = "windows")]
+                {
+                    let paths: Vec<String> = item.content
+                        .split(|c| c == '\n' || c == ';')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    
+                    if !paths.is_empty() {
+                        let _clip = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+                        formats::FileList.write_clipboard(&paths).map_err(|e| e.to_string())?;
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    clipboard::copy_to_clipboard(&item.content)?;
+                }
+            } else {
+                clipboard::copy_to_clipboard(&item.content)?;
+            }
+            handle_paste_and_hide(&app, should_paste.unwrap_or(false));
+            Ok(())
+        },
+        Ok(None) => Err("Item not found".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -427,17 +474,33 @@ fn update_shortcut(
     // Unregister old shortcut if exists
     if let Some(old) = &*current_shortcut {
         // Best effort unregister
-        let _ = app.global_shortcut().unregister(old.as_str());
+        if !old.is_empty() {
+             let _ = app.global_shortcut().unregister(old.as_str());
+        }
     }
 
-    // Register new shortcut
-    app.global_shortcut()
-        .register(shortcut.as_str())
-        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    // Register new shortcut (if not empty)
+    if !shortcut.is_empty() {
+        app.global_shortcut()
+            .register(shortcut.as_str())
+            .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    }
 
-    *current_shortcut = Some(shortcut);
+    *current_shortcut = Some(shortcut.clone());
+
+    // Save to store
+    use tauri_plugin_store::StoreExt;
+    let store = app.store("settings.json").map_err(|e| e.to_string())?;
+    store.set("global_shortcut", serde_json::json!(shortcut));
+    store.save().map_err(|e| format!("Failed to save settings: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+fn get_shortcut(state: State<'_, GlobalShortcutState>) -> Result<String, String> {
+    let guard = state.0.lock().map_err(|_| "Failed to lock state")?;
+    Ok(guard.clone().unwrap_or_default())
 }
 
 #[tauri::command]
@@ -500,22 +563,31 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(GlobalShortcutState(Mutex::new(Some(
-            "CommandOrControl+D".into(),
-        ))))
+        .manage(GlobalShortcutState(Mutex::new(None))) // Initial state None, load in setup
         .manage(WindowPositionState(Mutex::new(HashMap::new())))
         .manage(HideSuppressState(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = move_window_to_mouse_monitor(&window);
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                        // Check if the triggered shortcut matches our current global shortcut
+                        let state = app.state::<GlobalShortcutState>();
+                        let guard = state.0.lock();
+                        if let Ok(guard) = guard {
+                            if let Some(current) = &*guard {
+                                // We don't strictly compare current == shortcut.to_string() 
+                                // because of aliases (e.g. CommandOrControl vs Ctrl)
+                                // println!("Shortcut triggered: {}, Configured: {}", shortcut, current);
+
+                                if let Some(window) = app.get_webview_window("main") {
+                                    if window.is_visible().unwrap_or(false) {
+                                        let _ = window.hide();
+                                    } else {
+                                        let _ = move_window_to_mouse_monitor(&window);
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                    }
+                                }
                             }
                         }
                     }
@@ -523,14 +595,29 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            // Register global shortcut manually to handle errors gracefully
-            #[cfg(target_os = "macos")]
-            let shortcut = "CommandOrControl+D";
-            #[cfg(target_os = "windows")]
-            let shortcut = "CommandOrControl+D";
+            // Load shortcut from store
+            use tauri_plugin_store::StoreExt;
+            let store = app.store("settings.json")?;
+            let mut shortcut = "CommandOrControl+D".to_string(); // Default
+
+            if let Some(val) = store.get("global_shortcut") {
+                 if let Some(s) = val.as_str() {
+                     shortcut = s.to_string();
+                 }
+            }
             
-            if let Err(e) = app.handle().global_shortcut().register(shortcut) {
-                eprintln!("Warning: Failed to register global shortcut '{}': {}", shortcut, e);
+            // Register global shortcut manually
+            if !shortcut.is_empty() {
+                if let Err(e) = app.handle().global_shortcut().register(shortcut.as_str()) {
+                    eprintln!("Warning: Failed to register global shortcut '{}': {}", shortcut, e);
+                }
+                
+                // Update state
+                let state = app.state::<GlobalShortcutState>();
+                let guard = state.0.lock();
+                if let Ok(mut guard) = guard {
+                    *guard = Some(shortcut);
+                }
             }
 
             // Initialize Database
@@ -714,7 +801,10 @@ pub fn run() {
             delete_item,
             update_item,
             hide_window,
-            copy_files
+            copy_files,
+            get_item_content,
+            copy_history_item,
+            get_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

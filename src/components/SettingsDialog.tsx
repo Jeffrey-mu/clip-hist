@@ -26,13 +26,36 @@ import {
   Download,
   Upload
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { save, open as openDialog, ask } from "@tauri-apps/plugin-dialog";
+import { type } from "@tauri-apps/plugin-os";
 
 const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => {
   const [recording, setRecording] = useState(false);
+  const [originalShortcut, setOriginalShortcut] = useState("");
+  const [osType, setOsType] = useState<string>("");
+  const shouldRestore = useRef(true);
+
+  useEffect(() => {
+    setOsType(type());
+  }, []);
+
+  useEffect(() => {
+    if (recording) {
+      setOriginalShortcut(value);
+      shouldRestore.current = true;
+      // Temporarily unregister shortcut to allow recording same keys
+      invoke("update_shortcut", { shortcut: "" }).catch(console.error);
+    } else {
+       // Only restore if cancelled (shouldRestore is true). 
+       // If committed (shouldRestore is false), parent handles update.
+       if (shouldRestore.current && originalShortcut) {
+          invoke("update_shortcut", { shortcut: originalShortcut }).catch(console.error);
+       }
+    }
+  }, [recording]);
   
   useEffect(() => {
     if (!recording) return;
@@ -42,32 +65,93 @@ const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: st
       e.stopPropagation();
       
       if (e.key === 'Escape') {
+        shouldRestore.current = true;
         setRecording(false);
         return;
       }
       
       const modifiers: string[] = [];
+      const isMac = osType === "macos";
+      
       // On macOS, metaKey is Command. On Windows, it's Windows key (Super).
-      // We map metaKey to CommandOrControl for macOS compatibility.
-      if (e.metaKey) modifiers.push('CommandOrControl');
-      if (e.ctrlKey) modifiers.push('Control');
-      if (e.altKey) modifiers.push('Alt');
-      if (e.shiftKey) modifiers.push('Shift');
+      if (isMac) {
+        if (e.metaKey) modifiers.push('CommandOrControl'); // Cmd
+        if (e.ctrlKey) modifiers.push('Control'); // Ctrl (caret)
+        if (e.altKey) modifiers.push('Alt'); // Option
+        if (e.shiftKey) modifiers.push('Shift');
+      } else {
+        // Windows/Linux
+        if (e.ctrlKey) modifiers.push('CommandOrControl'); // Ctrl as main modifier
+        if (e.metaKey) modifiers.push('Super'); // Windows key
+        if (e.altKey) modifiers.push('Alt');
+        if (e.shiftKey) modifiers.push('Shift');
+      }
       
       let key = e.key;
-      if (['Meta', 'Control', 'Alt', 'Shift'].includes(key)) return;
+      let code = e.code;
       
-      if (key.length === 1) {
-        key = key.toUpperCase();
+      // Map code to Tauri/Electron accelerator key names
+      // See: https://www.electronjs.org/docs/latest/api/accelerator
+      const codeMap: Record<string, string> = {
+        'ArrowUp': 'Up',
+        'ArrowDown': 'Down',
+        'ArrowLeft': 'Left',
+        'ArrowRight': 'Right',
+        'Escape': 'Esc',
+        'Enter': 'Return', // Or Enter
+        'Backspace': 'Backspace',
+        'Tab': 'Tab',
+        'Space': 'Space',
+        'Delete': 'Delete',
+        'Home': 'Home',
+        'End': 'End',
+        'PageUp': 'PageUp',
+        'PageDown': 'PageDown',
+        'Insert': 'Insert',
+        'Minus': '-',
+        'Equal': '=',
+        'BracketLeft': '[',
+        'BracketRight': ']',
+        'Backslash': '\\',
+        'Semicolon': ';',
+        'Quote': '\'',
+        'Comma': ',',
+        'Period': '.',
+        'Slash': '/',
+        'Backquote': '`',
+      };
+
+      if (code.startsWith('Key')) {
+        key = code.slice(3);
+      } else if (code.startsWith('Digit')) {
+        key = code.slice(5);
+      } else if (code.startsWith('F') && code.length <= 3) {
+        key = code;
+      } else if (codeMap[code]) {
+        key = codeMap[code];
+      } else {
+        // Fallback for special keys or unknown
+        if (key.length === 1) {
+          key = key.toUpperCase();
+        }
       }
       
       let finalKey = key;
-      if (e.code === 'Space') finalKey = 'Space';
+      if (['Meta', 'Control', 'Alt', 'Shift', 'OS', 'Super'].includes(finalKey)) return;
       
-      if (modifiers.length > 0 && finalKey) {
+      // Allow shortcuts with modifiers OR single keys if they are special (F1-F12, Insert, etc)
+      // Check if key is special (length > 1)
+      const isSpecialKey = finalKey.length > 1;
+
+      if ((modifiers.length > 0 || isSpecialKey) && finalKey) {
         // Unique modifiers and sort order convention if needed
         const uniqueModifiers = Array.from(new Set(modifiers));
+        // Sort order: Super, CmdOrCtrl, Ctrl, Alt, Shift
+        const order = ['Super', 'CommandOrControl', 'Control', 'Alt', 'Shift'];
+        uniqueModifiers.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        
         const shortcut = [...uniqueModifiers, finalKey].join('+');
+        shouldRestore.current = false;
         onChange(shortcut);
         setRecording(false);
       }
@@ -79,11 +163,11 @@ const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: st
 
   return (
     <Button 
-      variant={recording ? "destructive" : "outline"} 
+      variant={recording ? "secondary" : "outline"} 
       onClick={() => setRecording(true)}
       className="font-mono h-8 text-sm px-3 min-w-[140px]"
     >
-      {recording ? "按下快捷键..." : value.replace("CommandOrControl", "Cmd").replace("Control", "Ctrl")}
+      {recording ? "按下快捷键 (如 Ctrl+Alt+X)..." : value.replace("CommandOrControl", "Cmd").replace("Control", "Ctrl")}
     </Button>
   );
 };
@@ -109,7 +193,10 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     setTheme(localStorage.getItem("theme") || "system");
     setHistoryDuration(localStorage.getItem("historyDuration") || "3");
     setPrimaryAction(localStorage.getItem("primaryAction") || "paste");
-    setGlobalShortcut(localStorage.getItem("globalShortcut") || "CommandOrControl+D");
+    // setGlobalShortcut(localStorage.getItem("globalShortcut") || "CommandOrControl+D");
+    invoke<string>("get_shortcut")
+      .then(s => setGlobalShortcut(s || "CommandOrControl+D"))
+      .catch(console.error);
     setShowLinkPreview(localStorage.getItem("showLinkPreview") !== "false");
     setUpdateHistoryOnAction(localStorage.getItem("updateHistoryOnAction") !== "false");
 
@@ -181,7 +268,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     try {
       await invoke("update_shortcut", { shortcut: newShortcut });
       setGlobalShortcut(newShortcut);
-      localStorage.setItem("globalShortcut", newShortcut);
+      // localStorage.setItem("globalShortcut", newShortcut);
     } catch (e) {
       console.error("Failed to update shortcut:", e);
       alert(`无法注册快捷键 "${newShortcut}": ${e}`);

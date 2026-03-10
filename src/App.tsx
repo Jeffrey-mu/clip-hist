@@ -47,6 +47,8 @@ function App() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -112,7 +114,7 @@ function App() {
         limit: 15, 
         offset,
         search,
-        filterType // Changed from filter_type to match Tauri's camelCase mapping
+        filter_type: filterType 
       });
 
       if (items.length < 15) {
@@ -230,15 +232,8 @@ function App() {
       const primaryAction = localStorage.getItem("primaryAction") || "paste";
       const shouldPaste = primaryAction === "paste";
 
-      if (item.item_type === 'file') {
-        // Support single path or multi-path separated by newlines/semicolons
-        const parts = item.content.split(/\r?\n|;\s*/).map(s => s.trim()).filter(Boolean);
-        const paths = parts.length > 0 ? parts : [item.content];
-        await invoke("copy_files", { paths, shouldPaste });
-      } else {
-        await invoke("copy_item", { content: item.content, shouldPaste });
-        // Window is hidden by the backend command
-      }
+      await invoke("copy_history_item", { id: item.id, shouldPaste });
+      // Window is hidden by the backend command
     } catch (error) {
       console.error("Failed to copy:", error);
     }
@@ -289,6 +284,35 @@ function App() {
   };
 
   const selectedItem = history[selectedIndex];
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setPreviewContent(null);
+      return;
+    }
+
+    const fetchContent = async () => {
+      // If it's an image (content empty) or long text (truncated), fetch full content
+      // Note: db.rs truncates text to 300 chars.
+      if (selectedItem.item_type === 'image' || selectedItem.content.length >= 300) {
+        setIsPreviewLoading(true);
+        try {
+          const content = await invoke<string>('get_item_content', { id: selectedItem.id });
+          setPreviewContent(content);
+        } catch (e) {
+          console.error("Failed to fetch item content", e);
+          setPreviewContent(null);
+        } finally {
+          setIsPreviewLoading(false);
+        }
+      } else {
+        setPreviewContent(selectedItem.content);
+        setIsPreviewLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, [selectedItem]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -394,12 +418,31 @@ function App() {
   };
 
   const renderPreview = (item: HistoryItem) => {
+    if (isPreviewLoading) {
+      return (
+        <div className="flex flex-col h-full bg-background items-center justify-center text-muted-foreground">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      );
+    }
+
+    const contentToDisplay = previewContent || item.content;
+
     if (item.item_type === 'image') {
+      if (!contentToDisplay) {
+        return (
+           <div className="flex flex-col h-full bg-background items-center justify-center text-muted-foreground">
+              <ImageIcon className="w-12 h-12 opacity-20 mb-2" />
+              <span className="text-sm">Image not available</span>
+           </div>
+        );
+     }
+
       return (
         <div className="flex flex-col h-full bg-background">
           <div className="flex-1 flex items-center justify-center bg-muted/5 p-8 overflow-hidden">
             <img 
-              src={item.content} 
+              src={contentToDisplay} 
               alt="Clipboard Image" 
               className="max-w-full max-h-full object-contain shadow-sm rounded-lg" 
             />
@@ -425,13 +468,13 @@ function App() {
              <div className="flex flex-col items-center justify-center h-full gap-5 pt-8">
               <div 
                 className="w-24 h-24 rounded-2xl shadow-xl border border-border/50 transition-all hover:scale-105"
-                style={{ backgroundColor: item.content }}
+                style={{ backgroundColor: contentToDisplay }}
               />
-              <span className="font-mono text-xl font-medium tracking-wider select-text bg-muted/30 px-3 py-1 rounded-md">{item.content}</span>
+              <span className="font-mono text-xl font-medium tracking-wider select-text bg-muted/30 px-3 py-1 rounded-md">{contentToDisplay}</span>
             </div>
           ) : (
             <div className="whitespace-pre-wrap font-mono text-sm leading-[1.8] break-words text-foreground/90 select-text">
-              <HighlightedText text={item.content} highlight={search} />
+              <HighlightedText text={contentToDisplay} highlight={search} />
             </div>
           )}
         </ScrollArea>
@@ -446,11 +489,11 @@ function App() {
               <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Characters</span>
-              <span className="font-medium text-foreground">{item.content.length}</span>
+              <span className="font-medium text-foreground">{contentToDisplay.length}</span>
               <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Words</span>
-              <span className="font-medium text-foreground">{getWordCount(item.content)}</span>
+              <span className="font-medium text-foreground">{getWordCount(contentToDisplay)}</span>
               <Separator className="col-span-2 my-1 opacity-30"/>
               
               <span className="text-muted-foreground">Created</span>
@@ -551,12 +594,8 @@ function App() {
                      {/* Icon or Thumbnail */}
                      <div className="shrink-0">
                        {item.item_type === 'image' ? (
-                         <div className="w-9 h-9 overflow-hidden border border-border/20 bg-background rounded-sm">
-                           <img 
-                             src={item.content} 
-                             alt="Thumb" 
-                             className="w-full h-full object-cover opacity-90"
-                           />
+                         <div className="w-9 h-9 overflow-hidden border border-border/20 bg-background rounded-sm flex items-center justify-center">
+                           <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
                          </div>
                        ) : (
                           <div className="w-9 h-9 flex items-center justify-center bg-background border border-border/10 shrink-0 rounded-sm">

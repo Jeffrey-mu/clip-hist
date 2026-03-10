@@ -80,7 +80,18 @@ impl Database {
     ) -> Result<Vec<HistoryItem>> {
         let conn = self.conn.lock().unwrap();
 
-        let mut query = "SELECT id, content, item_type, datetime(created_at, 'localtime') as created_at FROM clipboard_history".to_string();
+        // Optimized query:
+        // 1. For images, return empty string for content to save memory/bandwidth
+        // 2. For text, truncate to 200 chars for preview
+        let mut query = "SELECT id, 
+            CASE 
+                WHEN item_type = 'image' THEN '' 
+                ELSE substr(content, 1, 300) 
+            END as content, 
+            item_type, 
+            datetime(created_at, 'localtime') as created_at 
+            FROM clipboard_history".to_string();
+            
         let mut where_clauses = Vec::new();
         let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -119,6 +130,26 @@ impl Database {
         })?;
 
         rows.collect()
+    }
+
+    pub fn get_item(&self, id: i64) -> Result<Option<HistoryItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, content, item_type, datetime(created_at, 'localtime') FROM clipboard_history WHERE id = ?")?;
+        
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(HistoryItem {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                item_type: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+
+        if let Some(row) = rows.next() {
+            Ok(Some(row?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn delete_all(&self) -> Result<()> {
