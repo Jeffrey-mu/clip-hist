@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -6,15 +7,32 @@ interface EditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialContent: string;
+  itemId: number;
   onSave: (newContent: string) => void;
 }
 
-export function EditDialog({ open, onOpenChange, initialContent, onSave }: EditDialogProps) {
+export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave }: EditDialogProps) {
   const [content, setContent] = useState(initialContent);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     setContent(initialContent);
-  }, [initialContent, open]);
+    
+    if (open && itemId) {
+      // Fetch full content to ensure we're not editing truncated text
+      setIsLoading(true);
+      invoke<string>('get_item_content', { id: itemId })
+        .then(fullContent => {
+          setContent(fullContent);
+        })
+        .catch(err => {
+          console.error("Failed to fetch full content for editing:", err);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [initialContent, open, itemId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     e.stopPropagation(); // Stop propagation to prevent global window hide
@@ -53,7 +71,10 @@ export function EditDialog({ open, onOpenChange, initialContent, onSave }: EditD
         }}
       >
         <DialogHeader>
-          <DialogTitle>Edit Content</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Edit Content
+            {isLoading && <span className="text-xs text-muted-foreground font-normal">(Loading full content...)</span>}
+          </DialogTitle>
         </DialogHeader>
         <div className="flex-1 flex flex-col gap-2">
           <textarea
@@ -62,6 +83,7 @@ export function EditDialog({ open, onOpenChange, initialContent, onSave }: EditD
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
             autoFocus
+            disabled={isLoading}
           />
         </div>
         <DialogFooter className="flex justify-between items-center sm:justify-between">

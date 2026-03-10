@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,8 @@ import {
   Palette,
   File as FileIcon,
   Settings,
+  Code as CodeIcon,
+  Terminal,
 } from "lucide-react";
 
 import { type } from "@tauri-apps/plugin-os";
@@ -49,6 +51,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -56,6 +59,11 @@ function App() {
   const observer = useRef<IntersectionObserver | null>(null);
 
   const [osType, setOsType] = useState<string>("");
+
+  const currentItem = history[selectedIndex];
+  useEffect(() => {
+    setImageError(false);
+  }, [currentItem?.id, currentItem?.content]);
 
   // Refs for current state to use in callbacks/effects
   const historyRef = useRef(history);
@@ -89,6 +97,17 @@ function App() {
   useEffect(() => {
     historyLengthRef.current = history.length;
   }, [history]);
+
+  // Disable right-click context menu
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, []);
 
   useEffect(() => {
     // Get OS type
@@ -377,13 +396,20 @@ function App() {
     return text.trim().split(/\s+/).filter(w => w.length > 0).length;
   };
 
-  const getTypeIcon = (type: string) => {
+  const getTypeIcon = (type: string, content?: string) => {
     switch (type) {
       case 'image': return ImageIcon;
       case 'link': return LinkIcon;
       case 'color': return Palette;
       case 'file': return FileIcon;
-      default: return FileText;
+      default: 
+        if (content) {
+          const trimmed = content.trim();
+          if (trimmed.startsWith('http')) return LinkIcon;
+          if (trimmed.match(/^(import|export|const|let|var|function|class|def|if|for|while|return|package|public|private|protected|use)/)) return CodeIcon;
+          if (trimmed.startsWith('$') || trimmed.startsWith('npm') || trimmed.startsWith('git') || trimmed.startsWith('pnpm') || trimmed.startsWith('yarn')) return Terminal;
+        }
+        return FileText;
     }
   };
 
@@ -393,8 +419,21 @@ function App() {
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
     if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} mins ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours}h ago`;
+    }
+    
+    // Check if it was yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    
     return date.toLocaleDateString();
   };
 
@@ -408,7 +447,7 @@ function App() {
       <span>
         {parts.map((part, i) => 
           part.toLowerCase() === highlight.toLowerCase() ? (
-            <span key={i} className="bg-yellow-400/40 text-foreground font-medium rounded-[2px]">{part}</span>
+            <span key={i} className="bg-primary/20 text-primary px-[2px] py-0 rounded-[2px] font-medium">{part}</span>
           ) : (
             <span key={i}>{part}</span>
           )
@@ -428,79 +467,120 @@ function App() {
 
     const contentToDisplay = previewContent || item.content;
 
-    if (item.item_type === 'image') {
-      if (!contentToDisplay) {
-        return (
-           <div className="flex flex-col h-full bg-background items-center justify-center text-muted-foreground">
-              <ImageIcon className="w-12 h-12 opacity-20 mb-2" />
-              <span className="text-sm">Image not available</span>
-           </div>
-        );
-     }
+    // Detect if the file is an image
+    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(item.content.trim());
+    const displayImageSrc = item.item_type === 'image' 
+        ? contentToDisplay 
+        : isImageFile 
+            ? convertFileSrc(item.content.trim(), 'asset') 
+            : null;
 
-      return (
-        <div className="flex flex-col h-full bg-background">
-          <div className="flex-1 flex items-center justify-center bg-muted/5 p-8 overflow-hidden">
-            <img 
-              src={contentToDisplay} 
-              alt="Clipboard Image" 
-              className="max-w-full max-h-full object-contain shadow-sm rounded-lg" 
-            />
-          </div>
-          <Separator />
-          <div className="p-6 bg-muted/10 text-xs text-muted-foreground">
-             <div className="grid grid-cols-2 gap-4">
-                <span className="font-medium text-muted-foreground">Type</span>
-                <span className="text-right text-foreground">Image</span>
-                <span className="font-medium text-muted-foreground">Size</span>
-                <span className="text-right text-foreground">Unknown</span>
-             </div>
-          </div>
-        </div>
-      );
-    }
-    
-    // Text based preview
+    // Unified Preview Layout
     return (
-      <div className="flex flex-col h-full bg-background">
-         <ScrollArea className="flex-1 p-8">
+      <div className="flex flex-col h-full bg-card overflow-hidden border-l border-border font-sans text-foreground">
+        
+        <div className="flex-grow p-6 overflow-hidden flex flex-col bg-secondary/50">
+          <div className="flex items-center gap-2 mb-3 shrink-0">
+             <span className="text-[11px] font-bold text-muted-foreground tracking-wider uppercase">Content Preview</span>
+             <div className="h-px flex-grow bg-border"></div>
+             <span className="text-[10px] text-muted-foreground font-medium opacity-70">Read Only</span>
+          </div>
+          
           {item.item_type === 'color' ? (
-             <div className="flex flex-col items-center justify-center h-full gap-5 pt-8">
+            <div className="flex flex-col items-center justify-center h-full gap-4 bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
               <div 
-                className="w-24 h-24 rounded-2xl shadow-xl border border-border/50 transition-all hover:scale-105"
-                style={{ backgroundColor: contentToDisplay }}
+                className="w-32 h-32 rounded-xl shadow-inner border border-border/50"
+                style={{ backgroundColor: item.content }}
               />
-              <span className="font-mono text-xl font-medium tracking-wider select-text bg-muted/30 px-3 py-1 rounded-md">{contentToDisplay}</span>
+              <div className="text-center">
+                <p className="font-mono text-xl font-bold text-foreground">{item.content}</p>
+                <p className="text-sm text-muted-foreground mt-1">Color Preview</p>
+              </div>
             </div>
+          ) : (item.item_type === 'image' || isImageFile) ? (
+             <div className="flex-col flex h-full bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden">
+                {displayImageSrc && !imageError ? (
+                  <div className="flex-1 flex items-center justify-center bg-secondary/30 relative w-full h-full overflow-hidden">
+                     <img 
+                        src={displayImageSrc} 
+                        alt="Preview" 
+                        className="w-full h-full object-contain"
+                        onError={() => setImageError(true)}
+                      />
+                  </div>
+                ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                      <ImageIcon className="w-8 h-8 opacity-20" />
+                      <span className="text-sm opacity-50">{imageError ? "Image load failed" : "Image not available"}</span>
+                   </div>
+                )}
+             </div>
           ) : (
-            <div className="whitespace-pre-wrap font-mono text-sm leading-[1.8] break-words text-foreground/90 select-text">
-              <HighlightedText text={contentToDisplay} highlight={search} />
+            <div className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-4 overflow-y-auto">
+              <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
+                <HighlightedText text={contentToDisplay} highlight={search} />
+              </pre>
             </div>
           )}
-        </ScrollArea>
+        </div>
         
-        <Separator />
-        
-        <div className="p-5 bg-muted/10">
-           <h3 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground/70 mb-4">Information</h3>
-           <div className="grid grid-cols-[1fr_auto] gap-y-3 text-xs">
-              <span className="text-muted-foreground">Content type</span>
-              <span className="font-medium text-foreground">{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
-              <Separator className="col-span-2 my-1 opacity-30"/>
-              
-              <span className="text-muted-foreground">Characters</span>
-              <span className="font-medium text-foreground">{contentToDisplay.length}</span>
-              <Separator className="col-span-2 my-1 opacity-30"/>
-              
-              <span className="text-muted-foreground">Words</span>
-              <span className="font-medium text-foreground">{getWordCount(contentToDisplay)}</span>
-              <Separator className="col-span-2 my-1 opacity-30"/>
-              
-              <span className="text-muted-foreground">Created</span>
-              <span className="font-medium text-foreground">
-                {getRelativeTime(item.created_at)}
+        <div className="px-8 py-6 bg-card border-t border-border shrink-0">
+          <div className="grid grid-cols-[100px_1fr] gap-y-4 items-center text-[13px]">
+            <div className="text-[12px] text-muted-foreground font-medium">Content type</div>
+            <div>
+              <span className="px-2 py-0.5 bg-secondary text-foreground text-[11px] font-bold rounded border border-border inline-block">
+                {item.item_type === 'text' ? 'TEXT' : item.item_type.toUpperCase()}
               </span>
-           </div>
+            </div>
+
+            {item.item_type === 'image' ? (
+               <>
+                 <div className="text-[12px] text-muted-foreground font-medium">Source</div>
+                 <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">Clipboard</div>
+               </>
+            ) : isImageFile ? (
+               <>
+                 <div className="text-[12px] text-muted-foreground font-medium">Source</div>
+                 <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">Local File</div>
+               </>
+            ) : (
+               <>
+                <div className="text-[12px] text-muted-foreground font-medium">Characters</div>
+                <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">{contentToDisplay.length.toLocaleString()}</div>
+
+                <div className="text-[12px] text-muted-foreground font-medium">Words</div>
+                <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">{getWordCount(contentToDisplay).toLocaleString()}</div>
+               </>
+            )}
+
+            <div className="text-[12px] text-muted-foreground font-medium">Created</div>
+            <div className="text-[12px] text-foreground font-medium italic">
+              {getRelativeTime(item.created_at)}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-10 px-6 flex items-center justify-between text-[11px] border-t border-border bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2">
+             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.4)]"></div>
+             <span className="font-bold text-muted-foreground tracking-wide text-[10px]">SYNCING ENABLED</span>
+          </div>
+          <div className="flex gap-4 font-semibold text-foreground">
+             <div 
+               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors group"
+               onClick={() => handleCopy(item)}
+             >
+               <span>Copy</span> 
+               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">↵</kbd>
+             </div>
+             <div 
+               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors group"
+               onClick={() => setIsActionsOpen(true)}
+             >
+               <span>Actions</span> 
+               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">{cmdKey}K</kbd>
+             </div>
+          </div>
         </div>
       </div>
     );
@@ -560,7 +640,7 @@ function App() {
       };
     }, [item.id, item.item_type]);
 
-    const Icon = getTypeIcon(item.item_type);
+    const Icon = getTypeIcon(item.item_type, item.content);
     
     return (
       <div
@@ -569,18 +649,18 @@ function App() {
           setRef(el);
         }}
         className={cn(
-          "mx-3 px-3 py-2.5 cursor-pointer text-sm transition-all flex items-center gap-4 mb-1 rounded-r-md border-l-[3px]",
+          "mx-2 px-3 py-3 cursor-pointer text-sm transition-all flex items-center gap-3 mb-1.5 rounded-md border-l-[3px] relative",
           isSelected
-            ? "bg-accent/80 border-primary text-foreground shadow-sm"
-            : "border-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+            ? "bg-accent border-primary shadow-sm"
+            : "border-transparent hover:bg-muted/50"
         )}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
       >
         {/* Icon or Thumbnail */}
-        <div className="shrink-0 w-12 h-12 flex items-center justify-center">
+        <div className="shrink-0 w-10 h-10 flex items-center justify-center">
           {item.item_type === 'image' ? (
-            <div className="w-full h-full overflow-hidden border border-border/20 bg-background/50 rounded-sm flex items-center justify-center relative">
+            <div className="w-full h-full overflow-hidden border border-border/20 bg-background/50 rounded-md flex items-center justify-center relative shadow-sm">
               {imageContent ? (
                 <img 
                   src={imageContent} 
@@ -590,20 +670,22 @@ function App() {
               ) : (
                 <div className="flex items-center justify-center w-full h-full">
                   {isLoadingImage ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary/50"></div>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary/50"></div>
                   ) : (
-                    <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
+                    <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
                   )}
                 </div>
               )}
             </div>
           ) : (
-             <div className="w-9 h-9 flex items-center justify-center bg-background border border-border/10 shrink-0 rounded-sm">
+             <div className={cn(
+               "w-10 h-10 flex items-center justify-center shrink-0 rounded-md shadow-sm transition-colors",
+               isSelected ? "bg-background border border-border" : "bg-background/50 border border-border/10"
+             )}>
               <Icon className={cn(
-                "w-4 h-4 transition-colors", 
-                isSelected ? "opacity-100" : "opacity-70",
-                item.item_type === 'text' && "text-blue-500",
-                item.item_type === 'image' && "text-purple-500",
+                "w-5 h-5 transition-colors", 
+                isSelected ? "text-primary" : "text-muted-foreground/70",
+                item.item_type === 'text' && !isSelected && "text-blue-500/70",
                 item.item_type === 'link' && "text-sky-500",
                 item.item_type === 'file' && "text-orange-500",
                 item.item_type === 'color' && "text-pink-500"
@@ -613,19 +695,22 @@ function App() {
         </div>
 
         {/* Content Info */}
-        <div className="flex flex-col min-w-0 flex-1 gap-1">
+        <div className="flex flex-col min-w-0 flex-1 gap-1.5">
           <div className="flex items-center justify-between">
-            <span className={cn(
-              "truncate font-medium leading-tight",
-              index === selectedIndex ? "text-foreground" : "text-foreground/80"
+            <div className={cn(
+              "truncate text-sm w-full",
+              isSelected ? "font-bold text-foreground" : "font-medium text-foreground/90"
             )}>
               {item.item_type === 'image' 
                 ? "Image Capture" 
                 : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
               }
-            </span>
+            </div>
           </div>
-          <div className="text-[10px] opacity-60 truncate font-mono flex items-center justify-between">
+          <div className={cn(
+            "text-[11px] flex items-center justify-between font-medium",
+            isSelected ? "text-muted-foreground" : "text-muted-foreground/70"
+          )}>
              <span>{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
              <span>{getRelativeTime(item.created_at)}</span>
           </div>
@@ -645,20 +730,20 @@ function App() {
       </div>
 
       {/* Top Search Bar Area */}
-      <div className="flex items-center gap-3 p-3 border-b border-border bg-background">
+      <div className="flex items-center gap-4 p-4 border-b border-border bg-background shrink-0 z-10">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-          <Input
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+          <input
             ref={searchInputRef}
-            placeholder="Type to filter entries..."
+            placeholder="Type to filter..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             autoFocus
-            className="h-10 pl-9 border-input shadow-none focus-visible:ring-1 focus-visible:ring-ring bg-muted/50 placeholder:text-muted-foreground/50 rounded-md text-sm"
+            className="flex h-9 w-full rounded-md border-0 bg-secondary/50 px-3 pl-9 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[130px] h-10 bg-muted/50 border-input shadow-none focus:ring-1 focus:ring-ring text-sm">
+          <SelectTrigger className="w-[140px] h-9 bg-secondary/50 border-0 shadow-sm focus:ring-1 focus:ring-ring text-sm font-medium text-muted-foreground">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
           <SelectContent>
@@ -671,7 +756,7 @@ function App() {
           </SelectContent>
         </Select>
 
-        <Button variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground hover:text-foreground" onClick={() => setIsSettingsOpen(true)}>
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground/70 hover:text-foreground hover:bg-secondary/80 rounded-md transition-all" onClick={() => setIsSettingsOpen(true)}>
           <Settings className="w-4 h-4" />
         </Button>
         <SettingsDialog 
@@ -684,87 +769,62 @@ function App() {
       {/* Main Split Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar: List */}
-        <div className="w-[35%] min-w-[250px] border-r border-border flex flex-col bg-muted">
-          <div className="px-4 py-2 text-xs font-medium text-muted-foreground/70">Today</div>
-          <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="space-y-2">
+        <div className="w-[30%] min-w-[260px] max-w-[400px] border-r border-border flex flex-col bg-background">
+          <div className="px-4 py-3 text-[11px] font-bold text-muted-foreground/50 uppercase tracking-wider sticky top-0 bg-background/95 backdrop-blur z-10">History</div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1 custom-scrollbar" ref={scrollRef}>
           {history.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">
-              {search ? "No matching items found" : "No history items"}
+            <div className="text-center text-muted-foreground py-12 text-sm">
+              {search ? "No matching items" : "Clipboard is empty"}
             </div>
           ) : (
-             <div className="flex flex-col pb-2">
+             <>
               {history.map((item, index) => {
                  const isSelected = index === selectedIndex;
                  return (
-                   <HistoryListItem
-                     key={item.id}
-                     item={item}
-                     index={index}
-                     isSelected={isSelected}
-                     search={search}
-                     onClick={() => setSelectedIndex(index)}
-                     onDoubleClick={() => handleCopy(item)}
-                     setRef={(el) => {
+                   <div 
+                     key={item.id} 
+                     ref={(el) => {
                        itemRefs.current[index] = el;
                        if (index === history.length - 1 && el) {
                          lastItemRef(el);
                        }
                      }}
-                   />
+                   >
+                     <HistoryListItem
+                       item={item}
+                       index={index}
+                       isSelected={isSelected}
+                       search={search}
+                       onClick={() => setSelectedIndex(index)}
+                       onDoubleClick={() => handleCopy(item)}
+                       setRef={() => {}} 
+                     />
+                   </div>
                  );
                })}
-             </div>
+             </>
           )}
-        </div>
-          </ScrollArea>
+          </div>
         </div>
 
         {/* Right Content: Preview & Details */}
-        <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
+        <div className="flex-1 flex flex-col bg-card h-full overflow-hidden">
           {selectedItem ? (
             renderPreview(selectedItem)
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <div className="flex flex-col items-center gap-2">
-                <Clipboard className="w-12 h-12 opacity-20" />
-                <p>Select an item to view details</p>
+            <div className="flex items-center justify-center h-full text-muted-foreground/40 bg-card">
+              <div className="flex flex-col items-center gap-3">
+                <div className="p-4 rounded-full bg-muted/30">
+                  <Clipboard className="w-8 h-8 opacity-50" />
+                </div>
+                <p className="text-sm font-medium">Select an item to view details</p>
               </div>
             </div>
           )}
         </div>
       </div>
       
-      {/* Footer Status Bar */}
-      <div className="h-9 border-t border-border bg-muted flex items-center justify-between px-3 text-xs shrink-0 select-none">
-        <div className="flex items-center gap-2">
-           <div className="bg-primary/10 p-1 rounded">
-             <Clipboard className="w-3 h-3 text-primary" />
-           </div>
-           <span className="font-medium text-muted-foreground">Clipboard History</span>
-        </div>
-        
-        <div className="flex items-center gap-4">
-           <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground">Copy to Clipboard</span>
-              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">↵</span>
-              </kbd>
-           </div>
-           
-           <div className="w-px h-3 bg-border" />
-           
-           <div 
-             className="flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors"
-             onClick={() => setIsActionsOpen(true)}
-           >
-              <span className="text-muted-foreground hover:text-foreground">Actions</span>
-              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">{cmdKey}</span>K
-              </kbd>
-           </div>
-        </div>
-      </div>
+      {/* Footer Status Bar (Original Footer - Removing since we moved it to Preview Pane) */}
       
       <ActionsDialog 
         open={isActionsOpen} 
@@ -776,6 +836,7 @@ function App() {
         open={isEditOpen} 
         onOpenChange={setIsEditOpen} 
         initialContent={selectedItem?.content || ""} 
+        itemId={selectedItem?.id || 0}
         onSave={handleUpdate} 
       />
     </div>

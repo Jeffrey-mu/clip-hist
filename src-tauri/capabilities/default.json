@@ -19,6 +19,14 @@
     "store:default",
     "dialog:default",
     "fs:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "$HOME/**" }, { "path": "$TEMP/**" }]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$HOME/**" }, { "path": "$TEMP/**" }]
+    },
     "os:default"
   ]
 }
