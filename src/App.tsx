@@ -465,11 +465,12 @@ function App() {
     const contentToDisplay = previewContent || item.content;
 
     // Detect if the file is an image
-    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(item.content.trim());
+    const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
+    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
     const displayImageSrc = item.item_type === 'image' 
         ? contentToDisplay 
         : isImageFile 
-            ? convertFileSrc(item.content.trim(), 'asset') 
+            ? convertFileSrc(firstFilePath, 'asset') 
             : null;
 
     // Unified Preview Layout
@@ -617,6 +618,9 @@ function App() {
     const itemRef = useRef<HTMLDivElement | null>(null);
     const observerRef = useRef<IntersectionObserver | null>(null);
 
+    const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
+    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
+
     useEffect(() => {
       if (item.item_type !== 'image' || imageContent) return;
 
@@ -667,11 +671,11 @@ function App() {
       >
         {/* Icon or Thumbnail */}
         <div className="shrink-0 w-10 h-10 flex items-center justify-center">
-          {item.item_type === 'image' ? (
+          {(item.item_type === 'image' || isImageFile) ? (
             <div className="w-full h-full overflow-hidden border border-border/20 bg-background/50 rounded-md flex items-center justify-center relative shadow-sm">
-              {imageContent ? (
+              {((item.item_type === 'image' && imageContent) || isImageFile) ? (
                 <img 
-                  src={imageContent} 
+                  src={item.item_type === 'image' ? imageContent! : convertFileSrc(firstFilePath, 'asset')} 
                   alt="thumbnail" 
                   className="w-full h-full object-cover"
                 />

@@ -2,6 +2,7 @@ use crate::db::Database;
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
 use image::{DynamicImage, ImageBuffer, Rgba};
+#[cfg(target_os = "macos")]
 use objc::{class, msg_send, sel, sel_impl};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
