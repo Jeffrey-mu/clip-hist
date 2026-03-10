@@ -53,6 +53,7 @@ function App() {
   
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLPreElement>(null);
   const observer = useRef<IntersectionObserver | null>(null);
 
   const [osType, setOsType] = useState<string>("");
@@ -109,6 +110,36 @@ function App() {
   useEffect(() => {
     // Get OS type
     setOsType(type());
+  }, []);
+
+  // Handle Select All (Ctrl+A / Cmd+A)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+A (Windows/Linux) or Cmd+A (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        const target = e.target as HTMLElement;
+        // Allow default behavior if user is in an input or textarea or contentEditable
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+
+        e.preventDefault();
+        
+        // Select content in preview if available
+        if (contentRef.current) {
+          const range = document.createRange();
+          range.selectNodeContents(contentRef.current);
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const isMac = osType === "macos";
@@ -525,7 +556,7 @@ function App() {
               onContextMenu={(e) => e.nativeEvent.stopPropagation()}
             >
               <div className="p-4">
-                <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
+                <pre ref={contentRef} className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
                   <HighlightedText text={contentToDisplay} highlight={search} />
                 </pre>
               </div>
