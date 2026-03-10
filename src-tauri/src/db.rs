@@ -97,7 +97,9 @@ impl Database {
 
         if let Some(s) = search {
             if !s.is_empty() {
-                where_clauses.push("content LIKE ?");
+                // Only search content if item is NOT an image
+                // Searching base64 image data is useless and confusing
+                where_clauses.push("(item_type != 'image' AND content LIKE ?)");
                 args.push(Box::new(format!("%{}%", s)));
             }
         }

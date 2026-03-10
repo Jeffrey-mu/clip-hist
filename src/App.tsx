@@ -506,6 +506,134 @@ function App() {
     );
   };
 
+  // Component for lazy loading images in the list
+  const HistoryListItem = ({ 
+    item, 
+    index, 
+    isSelected, 
+    search,
+    onClick, 
+    onDoubleClick, 
+    setRef 
+  }: { 
+    item: HistoryItem, 
+    index: number, 
+    isSelected: boolean, 
+    search: string,
+    onClick: () => void, 
+    onDoubleClick: () => void, 
+    setRef: (el: HTMLDivElement | null) => void 
+  }) => {
+    const [imageContent, setImageContent] = useState<string | null>(null);
+    const [isLoadingImage, setIsLoadingImage] = useState(false);
+    const itemRef = useRef<HTMLDivElement | null>(null);
+    const observerRef = useRef<IntersectionObserver | null>(null);
+
+    useEffect(() => {
+      if (item.item_type !== 'image' || imageContent) return;
+
+      // Create observer to lazy load image
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          setIsLoadingImage(true);
+          invoke<string>('get_item_content', { id: item.id })
+            .then(content => {
+              setImageContent(content);
+            })
+            .catch(err => {
+              console.error("Failed to load list thumbnail", err);
+            })
+            .finally(() => {
+              setIsLoadingImage(false);
+              // Disconnect after loading
+              if (observerRef.current) observerRef.current.disconnect();
+            });
+        }
+      });
+
+      if (itemRef.current) {
+        observerRef.current.observe(itemRef.current);
+      }
+
+      return () => {
+        if (observerRef.current) observerRef.current.disconnect();
+      };
+    }, [item.id, item.item_type]);
+
+    const Icon = getTypeIcon(item.item_type);
+    
+    return (
+      <div
+        ref={(el) => {
+          itemRef.current = el;
+          setRef(el);
+        }}
+        className={cn(
+          "mx-3 px-3 py-2.5 cursor-pointer text-sm transition-all flex items-center gap-4 mb-1 rounded-r-md border-l-[3px]",
+          isSelected
+            ? "bg-accent/80 border-primary text-foreground shadow-sm"
+            : "border-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+        )}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+      >
+        {/* Icon or Thumbnail */}
+        <div className="shrink-0 w-12 h-12 flex items-center justify-center">
+          {item.item_type === 'image' ? (
+            <div className="w-full h-full overflow-hidden border border-border/20 bg-background/50 rounded-sm flex items-center justify-center relative">
+              {imageContent ? (
+                <img 
+                  src={imageContent} 
+                  alt="thumbnail" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex items-center justify-center w-full h-full">
+                  {isLoadingImage ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary/50"></div>
+                  ) : (
+                    <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+             <div className="w-9 h-9 flex items-center justify-center bg-background border border-border/10 shrink-0 rounded-sm">
+              <Icon className={cn(
+                "w-4 h-4 transition-colors", 
+                isSelected ? "opacity-100" : "opacity-70",
+                item.item_type === 'text' && "text-blue-500",
+                item.item_type === 'image' && "text-purple-500",
+                item.item_type === 'link' && "text-sky-500",
+                item.item_type === 'file' && "text-orange-500",
+                item.item_type === 'color' && "text-pink-500"
+              )} />
+            </div>
+          )}
+        </div>
+
+        {/* Content Info */}
+        <div className="flex flex-col min-w-0 flex-1 gap-1">
+          <div className="flex items-center justify-between">
+            <span className={cn(
+              "truncate font-medium leading-tight",
+              index === selectedIndex ? "text-foreground" : "text-foreground/80"
+            )}>
+              {item.item_type === 'image' 
+                ? "Image Capture" 
+                : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
+              }
+            </span>
+          </div>
+          <div className="text-[10px] opacity-60 truncate font-mono flex items-center justify-between">
+             <span>{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
+             <span>{getRelativeTime(item.created_at)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans">
       {/* Draggable Top Bar */}
@@ -566,84 +694,24 @@ function App() {
             </div>
           ) : (
              <div className="flex flex-col pb-2">
-               {history.map((item, index) => {
-                 const Icon = getTypeIcon(item.item_type);
+              {history.map((item, index) => {
                  const isSelected = index === selectedIndex;
                  return (
-                   <div
+                   <HistoryListItem
                      key={item.id}
-                     ref={(el) => {
+                     item={item}
+                     index={index}
+                     isSelected={isSelected}
+                     search={search}
+                     onClick={() => setSelectedIndex(index)}
+                     onDoubleClick={() => handleCopy(item)}
+                     setRef={(el) => {
                        itemRefs.current[index] = el;
                        if (index === history.length - 1 && el) {
                          lastItemRef(el);
                        }
                      }}
-                     className={cn(
-                       "mx-3 px-3 py-2.5 cursor-pointer text-sm transition-all flex items-center gap-4 mb-1 rounded-r-md border-l-[3px]",
-                       isSelected
-                         ? "bg-accent/80 border-primary text-foreground shadow-sm"
-                         : "border-transparent text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-                     )}
-                     onClick={() => {
-                       setSelectedIndex(index);
-                     }}
-                     onDoubleClick={() => {
-                       handleCopy(item);
-                     }}
-                   >
-                     {/* Icon or Thumbnail */}
-                     <div className="shrink-0">
-                       {item.item_type === 'image' ? (
-                         <div className="w-9 h-9 overflow-hidden border border-border/20 bg-background rounded-sm flex items-center justify-center">
-                           <ImageIcon className="w-5 h-5 text-muted-foreground/50" />
-                         </div>
-                       ) : (
-                          <div className="w-9 h-9 flex items-center justify-center bg-background border border-border/10 shrink-0 rounded-sm">
-                           <Icon className={cn(
-                             "w-4 h-4 transition-colors", 
-                             isSelected ? "opacity-100" : "opacity-70",
-                             item.item_type === 'text' && "text-blue-500",
-                             item.item_type === 'image' && "text-purple-500",
-                             item.item_type === 'link' && "text-sky-500",
-                             item.item_type === 'file' && "text-orange-500",
-                             item.item_type === 'color' && "text-pink-500"
-                           )} />
-                         </div>
-                       )}
-                     </div>
- 
-                     {/* Content Info */}
-                     <div className="flex flex-col min-w-0 flex-1 gap-1">
-                       <div className="flex items-center justify-between">
-                         <span className={cn(
-                           "truncate font-medium leading-tight",
-                           index === selectedIndex ? "text-foreground" : "text-foreground/80"
-                         )}>
-                           {item.item_type === 'image' 
-                             ? "Image Capture" 
-                             : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
-                           }
-                         </span>
-                       </div>
-                       {item.item_type === 'image' && (
-                          <div className="text-[10px] opacity-60 truncate font-mono">
-                            {getRelativeTime(item.created_at)}
-                          </div>
-                       )}
-                       {item.item_type !== 'image' && (
-                          <div className="text-[10px] opacity-60 truncate font-mono flex items-center justify-between">
-                            <span>{item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
-                            {/* Always show time for better info density if needed, or just selected */}
-                            <span>{getRelativeTime(item.created_at)}</span>
-                          </div>
-                       )}
-                     </div>
-                     
-                     {/* Time (Removed from right side as we integrated it below title for better density/scanability like Raycast sometimes does, or keep it right?) 
-                         User said: "Created: 05:42" -> "5 mins ago". 
-                         Raycast puts time on far right. Let's stick to far right for consistency with request.
-                     */}
-                   </div>
+                   />
                  );
                })}
              </div>
