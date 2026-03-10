@@ -23,7 +23,8 @@
         "transparent": false,
         "shadow": true,
         "hiddenTitle": true,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "skipTaskbar": true
       }
     ]
   },
