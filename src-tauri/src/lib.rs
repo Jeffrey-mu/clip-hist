@@ -2,11 +2,11 @@ mod clipboard;
 mod db;
 
 #[cfg(target_os = "macos")]
-use cocoa::appkit::{NSWindow, NSWindowButton};
+use cocoa::appkit::{NSWindow, NSWindowButton, NSPasteboard};
 #[cfg(target_os = "macos")]
-use cocoa::base::{id, YES};
+use cocoa::base::{id, YES, nil};
 #[cfg(target_os = "macos")]
-use cocoa::foundation::NSPoint;
+use cocoa::foundation::{NSPoint, NSString, NSURL, NSArray};
 use db::{Database, HistoryItem};
 #[cfg(target_os = "macos")]
 use objc::{class, msg_send, sel, sel_impl};
@@ -384,7 +384,32 @@ fn copy_history_item(app: AppHandle, db: State<'_, Database>, id: i64, should_pa
                         formats::FileList.write_clipboard(&paths).map_err(|e| e.to_string())?;
                     }
                 }
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(target_os = "macos")]
+                {
+                    unsafe {
+                        let paths: Vec<&str> = item.content
+                            .split(|c| c == '\n' || c == ';')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        
+                        if !paths.is_empty() {
+                            let pasteboard = NSPasteboard::generalPasteboard(nil);
+                            pasteboard.clearContents();
+                            
+                            let mut urls = Vec::new();
+                            for path in paths {
+                                let path_str = NSString::alloc(nil).init_str(path);
+                                let url = NSURL::fileURLWithPath_(nil, path_str);
+                                urls.push(url);
+                            }
+                            
+                            let ns_array = NSArray::arrayWithObjects(nil, &urls);
+                            pasteboard.writeObjects(ns_array);
+                        }
+                    }
+                }
+                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
                 {
                     clipboard::copy_to_clipboard(&item.content)?;
                 }

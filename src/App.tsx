@@ -484,7 +484,10 @@ function App() {
           </div>
           
           {item.item_type === 'color' ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+            <div 
+              className="flex flex-col items-center justify-center h-full gap-4 bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+              onContextMenu={(e) => e.nativeEvent.stopPropagation()}
+            >
               <div 
                 className="w-32 h-32 rounded-xl shadow-inner border border-border/50"
                 style={{ backgroundColor: item.content }}
@@ -495,7 +498,10 @@ function App() {
               </div>
             </div>
           ) : (item.item_type === 'image' || isImageFile) ? (
-             <div className="flex-col flex h-full bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden">
+             <div 
+               className="flex-col flex h-full bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden"
+               onContextMenu={(e) => e.nativeEvent.stopPropagation()}
+             >
                 {displayImageSrc && !imageError ? (
                   <div className="flex-1 flex items-center justify-center bg-secondary/30 relative w-full h-full overflow-hidden">
                      <img 
@@ -513,7 +519,10 @@ function App() {
                 )}
              </div>
           ) : (
-            <ScrollArea className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+            <ScrollArea 
+              className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+              onContextMenu={(e) => e.nativeEvent.stopPropagation()}
+            >
               <div className="p-4">
                 <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
                   <HighlightedText text={contentToDisplay} highlight={search} />
