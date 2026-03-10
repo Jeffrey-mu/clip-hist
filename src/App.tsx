@@ -697,7 +697,7 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar: List */}
         <div className="w-[30%] min-w-[260px] max-w-[400px] border-r border-border flex flex-col bg-background">
-          <div className="px-4 py-3 text-[11px] font-bold text-muted-foreground/50 uppercase tracking-wider sticky top-0 bg-background/95 backdrop-blur z-10">History</div>
+
           <ScrollArea className="flex-1">
             <div className="px-2 pb-2 space-y-1">
             {history.length === 0 ? (
@@ -724,27 +724,7 @@ function App() {
             </div>
           </ScrollArea>
           
-          <div className="border-t border-border flex items-center justify-between p-3 shrink-0 bg-background z-10">
-            <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground/70">
-              <span className="flex items-center gap-1">
-                <span className="bg-foreground/5 border border-border px-1.5 py-0.5 rounded shadow-sm text-[9px] font-sans">{cmdKey}K</span>
-                <span>Actions</span>
-              </span>
-              <span className="w-px h-3 bg-border/60"></span>
-              <span className="flex items-center gap-1">
-                <span className="bg-foreground/5 border border-border px-1.5 py-0.5 rounded shadow-sm text-[9px] font-sans">Enter</span>
-                <span>Copy</span>
-              </span>
-            </div>
-            
-             <div 
-               className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground/50 hover:text-primary/70 transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-accent/50 group select-none"
-               onClick={() => setIsActionsOpen(true)}
-             >
-               <span>Actions</span> 
-               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">{cmdKey}K</kbd>
-             </div>
-          </div>
+
         </div>
 
         {/* Right Content: Preview & Details */}
