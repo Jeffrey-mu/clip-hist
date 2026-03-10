@@ -6,7 +6,7 @@
   :root {
     /* Light Mode: Professional Light (macOS Inspired) */
     --background: 240 14% 96%; /* Sidebar: #F2F2F7 */
-    --foreground: 240 5% 11%; /* Main Text: #1C1C1E (Soft Black) */
+    --foreground: 0 0% 0%; /* Main Text: Pure Black */
     
     --card: 0 0% 100%; /* Main Content: Pure White #FFFFFF */
     --card-foreground: 240 5% 11%;
@@ -39,7 +39,7 @@
   .dark {
     /* Dark Mode: Deep & Focused */
     --background: 0 0% 10%; /* Sidebar: #1A1A1A */
-    --foreground: 220 10% 90%; /* Main Text: #E5E5E7 */
+    --foreground: 0 0% 100%; /* Main Text: Pure White */
     
     --card: 0 0% 13%; /* Main Content: #212121 */
     --card-foreground: 220 10% 90%;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -11,31 +11,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ActionsDialog } from "@/components/ActionsDialog";
 import { EditDialog } from "@/components/EditDialog";
 import { 
   Clipboard, 
   Search,
-  FileText,
   Image as ImageIcon,
-  Link as LinkIcon,
-  Palette,
-  File as FileIcon,
   Settings,
-  Code as CodeIcon,
-  Terminal,
 } from "lucide-react";
+import HistoryListItem, { HighlightedText } from "@/components/HistoryListItem";
+import { HistoryItem } from "@/types";
 
 import { type } from "@tauri-apps/plugin-os";
 
-interface HistoryItem {
-  id: number;
-  content: string;
-  item_type: string;
-  created_at: string;
-}
 
 function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -47,10 +36,11 @@ function App() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{ id: number, content: string } | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
   
+  const previewCache = useRef<Map<number, string>>(new Map());
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLPreElement>(null);
@@ -274,7 +264,7 @@ function App() {
     if (node) observer.current.observe(node);
   };
 
-  const handleCopy = async (item: HistoryItem) => {
+  const handleCopy = useCallback(async (item: HistoryItem) => {
     try {
       const primaryAction = localStorage.getItem("primaryAction") || "paste";
       const shouldPaste = primaryAction === "paste";
@@ -284,7 +274,7 @@ function App() {
     } catch (error) {
       console.error("Failed to copy:", error);
     }
-  };
+  }, []);
 
   const handleClearHistory = async () => {
     try {
@@ -324,6 +314,8 @@ function App() {
     if (!selectedItem) return;
     try {
       await invoke("update_item", { id: selectedItem.id, content: newContent });
+      // Update cache immediately
+      previewCache.current.set(selectedItem.id, newContent);
       setHistory(prev => prev.map(i => i.id === selectedItem.id ? { ...i, content: newContent } : i));
     } catch (error) {
       console.error("Failed to update item:", error);
@@ -334,31 +326,56 @@ function App() {
 
   useEffect(() => {
     if (!selectedItem) {
-      setPreviewContent(null);
+      setPreviewData(null);
       return;
     }
+
+    let active = true;
+    const currentId = selectedItem.id;
 
     const fetchContent = async () => {
       // If it's an image (content empty) or long text (truncated), fetch full content
       // Note: db.rs truncates text to 300 chars.
-      if (selectedItem.item_type === 'image' || selectedItem.content.length >= 300) {
-        setIsPreviewLoading(true);
+      const needsFetch = selectedItem.item_type === 'image' || selectedItem.content.length >= 300;
+      
+      if (needsFetch) {
+        // Check cache first
+        const cached = previewCache.current.get(currentId);
+        if (cached) {
+          if (active) {
+            setPreviewData({ id: currentId, content: cached });
+            setIsPreviewLoading(false);
+          }
+          return;
+        }
+
+        if (active) setIsPreviewLoading(true);
+        
         try {
-          const content = await invoke<string>('get_item_content', { id: selectedItem.id });
-          setPreviewContent(content);
+          const content = await invoke<string>('get_item_content', { id: currentId });
+          if (active) {
+            previewCache.current.set(currentId, content);
+            setPreviewData({ id: currentId, content });
+          }
         } catch (e) {
           console.error("Failed to fetch item content", e);
-          setPreviewContent(null);
+          if (active) setPreviewData(null);
         } finally {
-          setIsPreviewLoading(false);
+          if (active) setIsPreviewLoading(false);
         }
       } else {
-        setPreviewContent(selectedItem.content);
-        setIsPreviewLoading(false);
+        if (active) {
+          setPreviewData({ id: currentId, content: selectedItem.content });
+          setIsPreviewLoading(false);
+        }
       }
     };
 
     fetchContent();
+
+    return () => {
+      active = false;
+    };
   }, [selectedItem]);
 
   // Keyboard navigation
@@ -424,22 +441,6 @@ function App() {
     return text.trim().split(/\s+/).filter(w => w.length > 0).length;
   };
 
-  const getTypeIcon = (type: string, content?: string) => {
-    switch (type) {
-      case 'image': return ImageIcon;
-      case 'link': return LinkIcon;
-      case 'color': return Palette;
-      case 'file': return FileIcon;
-      default: 
-        if (content) {
-          const trimmed = content.trim();
-          if (trimmed.startsWith('http')) return LinkIcon;
-          if (trimmed.match(/^(import|export|const|let|var|function|class|def|if|for|while|return|package|public|private|protected|use)/)) return CodeIcon;
-          if (trimmed.startsWith('$') || trimmed.startsWith('npm') || trimmed.startsWith('git') || trimmed.startsWith('pnpm') || trimmed.startsWith('yarn')) return Terminal;
-        }
-        return FileText;
-    }
-  };
 
   const getRelativeTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -465,24 +466,19 @@ function App() {
     return date.toLocaleDateString();
   };
 
-  const HighlightedText = ({ text, highlight }: { text: string, highlight: string }) => {
-    if (!highlight.trim()) {
-      return <span>{text}</span>;
+
+  const handleSelect = useCallback((index: number) => {
+    setSelectedIndex(index);
+  }, []);
+
+  const handleItemDoubleClick = useCallback((index: number) => {
+    const item = historyRef.current[index];
+    if (item) {
+      handleCopy(item);
     }
-    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = text.split(regex);
-    return (
-      <span>
-        {parts.map((part, i) => 
-          part.toLowerCase() === highlight.toLowerCase() ? (
-            <span key={i} className="bg-primary/20 text-primary px-[2px] py-0 rounded-[2px] font-medium">{part}</span>
-          ) : (
-            <span key={i}>{part}</span>
-          )
-        )}
-      </span>
-    );
-  };
+  }, [handleCopy]);
+
+  // Component for lazy loading images in the list
 
   const renderPreview = (item: HistoryItem) => {
     if (isPreviewLoading) {
@@ -493,7 +489,7 @@ function App() {
       );
     }
 
-    const contentToDisplay = previewContent || item.content;
+    const contentToDisplay = (previewData?.id === item.id ? previewData.content : null) || item.content;
 
     // Detect if the file is an image
     const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
@@ -535,11 +531,11 @@ function App() {
                onContextMenu={(e) => e.nativeEvent.stopPropagation()}
              >
                 {displayImageSrc && !imageError ? (
-                  <div className="flex-1 flex items-center justify-center bg-secondary/30 relative w-full h-full overflow-hidden">
+                  <div className="flex-1 flex items-center justify-center bg-secondary/30 relative w-full h-full overflow-hidden p-4">
                      <img 
                         src={displayImageSrc} 
                         alt="Preview" 
-                        className="w-full h-full object-contain"
+                        className="w-full h-full object-contain rounded-lg shadow-sm"
                         onError={() => setImageError(true)}
                       />
                   </div>
@@ -626,132 +622,6 @@ function App() {
     );
   };
 
-  // Component for lazy loading images in the list
-  const HistoryListItem = ({ 
-    item, 
-    index, 
-    isSelected, 
-    search,
-    onClick, 
-    onDoubleClick, 
-    setRef 
-  }: { 
-    item: HistoryItem, 
-    index: number, 
-    isSelected: boolean, 
-    search: string,
-    onClick: () => void, 
-    onDoubleClick: () => void, 
-    setRef: (el: HTMLDivElement | null) => void 
-  }) => {
-    const [imageContent, setImageContent] = useState<string | null>(null);
-    const [isLoadingImage, setIsLoadingImage] = useState(false);
-    const itemRef = useRef<HTMLDivElement | null>(null);
-    const observerRef = useRef<IntersectionObserver | null>(null);
-
-    const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
-    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
-
-    useEffect(() => {
-      if (item.item_type !== 'image' || imageContent) return;
-
-      // Create observer to lazy load image
-      observerRef.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-          setIsLoadingImage(true);
-          invoke<string>('get_item_content', { id: item.id })
-            .then(content => {
-              setImageContent(content);
-            })
-            .catch(err => {
-              console.error("Failed to load list thumbnail", err);
-            })
-            .finally(() => {
-              setIsLoadingImage(false);
-              // Disconnect after loading
-              if (observerRef.current) observerRef.current.disconnect();
-            });
-        }
-      });
-
-      if (itemRef.current) {
-        observerRef.current.observe(itemRef.current);
-      }
-
-      return () => {
-        if (observerRef.current) observerRef.current.disconnect();
-      };
-    }, [item.id, item.item_type]);
-
-    const Icon = getTypeIcon(item.item_type, item.content);
-    
-    return (
-      <div
-        ref={(el) => {
-          itemRef.current = el;
-          setRef(el);
-        }}
-        className={cn(
-          "mx-2 px-3 py-2 cursor-pointer text-sm transition-all flex items-center gap-3 mb-0.5 rounded-md border-l-[3px] relative overflow-hidden max-w-full",
-          isSelected
-            ? "bg-accent border-primary shadow-sm"
-            : "border-transparent hover:bg-muted/50"
-        )}
-        onClick={onClick}
-        onDoubleClick={onDoubleClick}
-      >
-        {/* Icon or Thumbnail */}
-        <div className="shrink-0 w-10 h-10 flex items-center justify-center">
-          {(item.item_type === 'image' || isImageFile) ? (
-            <div className="w-full h-full overflow-hidden border border-border bg-secondary/30 rounded-md flex items-center justify-center relative shadow-sm">
-              {((item.item_type === 'image' && imageContent) || isImageFile) ? (
-                <img 
-                  src={item.item_type === 'image' ? imageContent! : convertFileSrc(firstFilePath, 'asset')} 
-                  alt="thumbnail" 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="flex items-center justify-center w-full h-full">
-                  {isLoadingImage ? (
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary/50"></div>
-                  ) : (
-                    <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-             <div className={cn(
-               "w-10 h-10 flex items-center justify-center shrink-0 rounded-md shadow-sm transition-colors",
-               isSelected ? "bg-background border border-border" : "bg-background/50 border border-border/10"
-             )}>
-              <Icon className={cn(
-                "w-5 h-5 transition-colors", 
-                isSelected ? "text-primary" : "text-muted-foreground/70",
-                item.item_type === 'text' && !isSelected && "text-blue-500/70",
-                item.item_type === 'link' && !isSelected && "text-sky-500",
-                item.item_type === 'file' && !isSelected && "text-orange-500",
-                item.item_type === 'color' && !isSelected && "text-pink-500"
-              )} />
-            </div>
-          )}
-        </div>
-
-        {/* Content Info */}
-        <div className="flex-1 min-w-0 overflow-hidden h-10 flex flex-col justify-center">
-          <div className={cn(
-            "line-clamp-1 break-all text-sm leading-tight w-full",
-            isSelected ? "font-bold text-foreground" : "font-medium text-foreground/90"
-          )}>
-            {item.item_type === 'image' 
-              ? "Image Capture" 
-              : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
-            }
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans">
@@ -813,34 +683,45 @@ function App() {
               </div>
             ) : (
                <>
-                {history.map((item, index) => {
-                   const isSelected = index === selectedIndex;
-                   return (
-                     <div 
-                       key={item.id} 
-                       ref={(el) => {
-                         itemRefs.current[index] = el;
-                         if (index === history.length - 1 && el) {
-                           lastItemRef(el);
-                         }
-                       }}
-                     >
-                       <HistoryListItem
-                         item={item}
-                         index={index}
-                         isSelected={isSelected}
-                         search={search}
-                         onClick={() => setSelectedIndex(index)}
-                         onDoubleClick={() => handleCopy(item)}
-                         setRef={() => {}} 
-                       />
-                     </div>
-                   );
-                 })}
+                {history.map((item, index) => (
+                  <HistoryListItem
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    isSelected={index === selectedIndex}
+                    search={search}
+                    onSelect={handleSelect}
+                    onDoubleClick={handleItemDoubleClick}
+                    ref={(el) => { if (el) itemRefs.current[index] = el; }}
+                  />
+                ))}
                </>
             )}
+            <div ref={lastItemRef} className="h-4" />
             </div>
           </ScrollArea>
+          
+          <div className="border-t border-border flex items-center justify-between p-3 shrink-0 bg-background z-10">
+            <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground/70">
+              <span className="flex items-center gap-1">
+                <span className="bg-foreground/5 border border-border px-1.5 py-0.5 rounded shadow-sm text-[9px] font-sans">{cmdKey}K</span>
+                <span>Actions</span>
+              </span>
+              <span className="w-px h-3 bg-border/60"></span>
+              <span className="flex items-center gap-1">
+                <span className="bg-foreground/5 border border-border px-1.5 py-0.5 rounded shadow-sm text-[9px] font-sans">Enter</span>
+                <span>Copy</span>
+              </span>
+            </div>
+            
+             <div 
+               className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground/50 hover:text-primary/70 transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-accent/50 group select-none"
+               onClick={() => setIsActionsOpen(true)}
+             >
+               <span>Actions</span> 
+               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">{cmdKey}K</kbd>
+             </div>
+          </div>
         </div>
 
         {/* Right Content: Preview & Details */}
