@@ -2,9 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -53,7 +51,6 @@ function App() {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
   
-  const scrollRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const observer = useRef<IntersectionObserver | null>(null);
@@ -771,40 +768,42 @@ function App() {
         {/* Left Sidebar: List */}
         <div className="w-[30%] min-w-[260px] max-w-[400px] border-r border-border flex flex-col bg-background">
           <div className="px-4 py-3 text-[11px] font-bold text-muted-foreground/50 uppercase tracking-wider sticky top-0 bg-background/95 backdrop-blur z-10">History</div>
-          <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1 custom-scrollbar" ref={scrollRef}>
-          {history.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12 text-sm">
-              {search ? "No matching items" : "Clipboard is empty"}
+          <ScrollArea className="flex-1">
+            <div className="px-2 pb-2 space-y-1">
+            {history.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12 text-sm">
+                {search ? "No matching items" : "Clipboard is empty"}
+              </div>
+            ) : (
+               <>
+                {history.map((item, index) => {
+                   const isSelected = index === selectedIndex;
+                   return (
+                     <div 
+                       key={item.id} 
+                       ref={(el) => {
+                         itemRefs.current[index] = el;
+                         if (index === history.length - 1 && el) {
+                           lastItemRef(el);
+                         }
+                       }}
+                     >
+                       <HistoryListItem
+                         item={item}
+                         index={index}
+                         isSelected={isSelected}
+                         search={search}
+                         onClick={() => setSelectedIndex(index)}
+                         onDoubleClick={() => handleCopy(item)}
+                         setRef={() => {}} 
+                       />
+                     </div>
+                   );
+                 })}
+               </>
+            )}
             </div>
-          ) : (
-             <>
-              {history.map((item, index) => {
-                 const isSelected = index === selectedIndex;
-                 return (
-                   <div 
-                     key={item.id} 
-                     ref={(el) => {
-                       itemRefs.current[index] = el;
-                       if (index === history.length - 1 && el) {
-                         lastItemRef(el);
-                       }
-                     }}
-                   >
-                     <HistoryListItem
-                       item={item}
-                       index={index}
-                       isSelected={isSelected}
-                       search={search}
-                       onClick={() => setSelectedIndex(index)}
-                       onDoubleClick={() => handleCopy(item)}
-                       setRef={() => {}} 
-                     />
-                   </div>
-                 );
-               })}
-             </>
-          )}
-          </div>
+          </ScrollArea>
         </div>
 
         {/* Right Content: Preview & Details */}
