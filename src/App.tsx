@@ -513,11 +513,13 @@ function App() {
                 )}
              </div>
           ) : (
-            <div className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-4 overflow-y-auto">
-              <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
-                <HighlightedText text={contentToDisplay} highlight={search} />
-              </pre>
-            </div>
+            <ScrollArea className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <div className="p-4">
+                <pre className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
+                  <HighlightedText text={contentToDisplay} highlight={search} />
+                </pre>
+              </div>
+            </ScrollArea>
           )}
         </div>
         
