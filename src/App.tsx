@@ -379,6 +379,10 @@ function App() {
   }, [selectedItem]);
 
   // Keyboard navigation
+  const isAutoScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastKeyTimeRef = useRef<number>(0);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Use refs to check if dialogs are open
@@ -398,14 +402,33 @@ function App() {
       
       if (history.length === 0) return;
 
-      if (e.key === "ArrowDown") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) => 
-          prev < history.length - 1 ? prev + 1 : prev
-        );
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        
+        // Throttle key events to prevent too rapid scrolling (max 1 event every 60ms = ~16fps)
+        const now = Date.now();
+        if (now - lastKeyTimeRef.current < 60) {
+          return;
+        }
+        lastKeyTimeRef.current = now;
+
+        isAutoScrollingRef.current = true;
+        
+        // Clear existing timeout to keep "auto" scrolling active during rapid key presses
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        
+        // Reset to smooth scrolling after key release/pause
+        scrollTimeoutRef.current = setTimeout(() => {
+          isAutoScrollingRef.current = false;
+        }, 150);
+
+        if (e.key === "ArrowDown") {
+          setSelectedIndex((prev) => 
+            prev < history.length - 1 ? prev + 1 : prev
+          );
+        } else {
+          setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        }
       } else if (e.key === "Enter") {
         e.preventDefault();
         // Use ref for current selection
@@ -426,7 +449,7 @@ function App() {
   useEffect(() => {
     if (itemRefs.current[selectedIndex]) {
       itemRefs.current[selectedIndex]?.scrollIntoView({
-        behavior: "smooth",
+        behavior: isAutoScrollingRef.current ? "auto" : "smooth",
         block: "nearest",
       });
     }
