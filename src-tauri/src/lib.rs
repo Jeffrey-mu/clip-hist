@@ -568,13 +568,13 @@ pub fn run() {
         .manage(HideSuppressState(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, shortcut, event| {
+                .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         // Check if the triggered shortcut matches our current global shortcut
                         let state = app.state::<GlobalShortcutState>();
                         let guard = state.0.lock();
                         if let Ok(guard) = guard {
-                            if let Some(current) = &*guard {
+                            if let Some(_current) = &*guard {
                                 // We don't strictly compare current == shortcut.to_string() 
                                 // because of aliases (e.g. CommandOrControl vs Ctrl)
                                 // println!("Shortcut triggered: {}, Configured: {}", shortcut, current);
@@ -683,6 +683,12 @@ pub fn run() {
 
                         // Disable window animation (NSWindowAnimationBehaviorNone = 2)
                         let _: () = msg_send![ns_window, setAnimationBehavior: 2];
+
+                        // Set collection behavior to allow joining all spaces and showing over fullscreen apps
+                        // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+                        // NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+                        let behavior: u64 = 1 | 256;
+                        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
                     }
                 }
             }
