@@ -15,9 +15,11 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow,
+};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -433,36 +435,40 @@ fn clear_history(app: AppHandle, db: State<'_, Database>) -> Result<(), String> 
 }
 
 #[tauri::command]
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn copy_files(app: AppHandle, paths: Vec<String>, should_paste: Option<bool>) -> Result<(), String> {
-    let _clip = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
-    formats::FileList.write_clipboard(paths.as_slice()).map_err(|e| e.to_string())?;
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let pasteboard = NSPasteboard::generalPasteboard(nil);
+        pasteboard.clearContents();
+        
+        let mut urls = Vec::new();
+        for path in paths {
+            let path_str = NSString::alloc(nil).init_str(&path);
+            let url = NSURL::fileURLWithPath_(nil, path_str);
+            urls.push(url);
+        }
+        
+        let ns_array = NSArray::arrayWithObjects(nil, &urls);
+        pasteboard.writeObjects(ns_array);
     }
 
-    if should_paste.unwrap_or(false) {
-        std::thread::spawn(|| {
-            // Give time for window to hide and previous app to focus
-            std::thread::sleep(std::time::Duration::from_millis(150));
-            
-            // Use PowerShell to send Ctrl+V
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            let _ = std::process::Command::new("powershell")
-                .creation_flags(CREATE_NO_WINDOW)
-                .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
-                .output();
-        });
+    #[cfg(target_os = "windows")]
+    {
+        if !paths.is_empty() {
+            let _clip = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+            formats::FileList.write_clipboard(&paths).map_err(|e| e.to_string())?;
+        }
     }
 
+    handle_paste_and_hide(&app, should_paste.unwrap_or(false));
     Ok(())
 }
 
 #[tauri::command]
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn copy_files(_app: AppHandle, _paths: Vec<String>, _should_paste: Option<bool>) -> Result<(), String> {
-    Err("copy_files is only supported on Windows currently".into())
+    Err("copy_files is only supported on Windows and macOS currently".into())
 }
 
 #[tauri::command]

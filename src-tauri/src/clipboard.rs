@@ -2,6 +2,7 @@ use crate::db::Database;
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
 use image::{DynamicImage, ImageBuffer, Rgba};
+use objc::{class, msg_send, sel, sel_impl};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
@@ -11,9 +12,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(target_os = "macos")]
 use cocoa::appkit::NSPasteboard;
 #[cfg(target_os = "macos")]
-use cocoa::base::nil;
+use cocoa::base::{id, nil};
 #[cfg(target_os = "macos")]
-use cocoa::foundation::NSInteger;
+use cocoa::foundation::{NSArray, NSInteger, NSString};
 
 #[cfg(target_os = "windows")]
 use clipboard_win::{formats as win_formats, get_clipboard, Format};
@@ -98,6 +99,43 @@ pub fn start_listener(app: AppHandle) {
                             last_image_hash = None;
                         }
                     }
+                }
+            }
+
+            // 0. macOS: Try to get file list (NSFilenamesPboardType)
+            #[cfg(target_os = "macos")]
+            {
+                unsafe {
+                     let pasteboard = NSPasteboard::generalPasteboard(nil);
+                     let ns_type = NSString::alloc(nil).init_str("NSFilenamesPboardType");
+                     let files: id = pasteboard.propertyListForType(ns_type);
+                     
+                     if files != nil {
+                         let count = NSArray::count(files);
+                         if count > 0 {
+                             let mut file_paths: Vec<String> = Vec::new();
+                             for i in 0..count {
+                                 let path_ns = NSArray::objectAtIndex(files, i);
+                                 let path_str = NSString::UTF8String(path_ns);
+                                 let path = std::ffi::CStr::from_ptr(path_str as *const i8).to_string_lossy().into_owned();
+                                 file_paths.push(path);
+                             }
+                             
+                             if !file_paths.is_empty() {
+                                 files_found = true;
+                                 let joined = file_paths.join("\n");
+                                 // Check against last_content to avoid duplicates
+                                 // Note: last_content stores the joined string
+                                 if joined != last_content {
+                                     new_content = Some((joined, "file".to_string()));
+                                     last_image_hash = None;
+                                 } else {
+                                     // Same content, mark as found so we don't process as text/image
+                                     files_found = true;
+                                 }
+                             }
+                         }
+                     }
                 }
             }
 
