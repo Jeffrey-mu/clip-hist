@@ -692,7 +692,7 @@ function App() {
           setRef(el);
         }}
         className={cn(
-          "mx-2 px-3 py-3 cursor-pointer text-sm transition-all flex items-center gap-3 mb-1.5 rounded-md border-l-[3px] relative",
+          "mx-2 px-3 py-2 cursor-pointer text-sm transition-all flex items-center gap-3 mb-0.5 rounded-md border-l-[3px] relative overflow-hidden max-w-full",
           isSelected
             ? "bg-accent border-primary shadow-sm"
             : "border-transparent hover:bg-muted/50"
@@ -703,7 +703,7 @@ function App() {
         {/* Icon or Thumbnail */}
         <div className="shrink-0 w-10 h-10 flex items-center justify-center">
           {(item.item_type === 'image' || isImageFile) ? (
-            <div className="w-full h-full overflow-hidden border border-border/20 bg-background/50 rounded-md flex items-center justify-center relative shadow-sm">
+            <div className="w-full h-full overflow-hidden border border-border bg-secondary/30 rounded-md flex items-center justify-center relative shadow-sm">
               {((item.item_type === 'image' && imageContent) || isImageFile) ? (
                 <img 
                   src={item.item_type === 'image' ? imageContent! : convertFileSrc(firstFilePath, 'asset')} 
@@ -729,33 +729,24 @@ function App() {
                 "w-5 h-5 transition-colors", 
                 isSelected ? "text-primary" : "text-muted-foreground/70",
                 item.item_type === 'text' && !isSelected && "text-blue-500/70",
-                item.item_type === 'link' && "text-sky-500",
-                item.item_type === 'file' && "text-orange-500",
-                item.item_type === 'color' && "text-pink-500"
+                item.item_type === 'link' && !isSelected && "text-sky-500",
+                item.item_type === 'file' && !isSelected && "text-orange-500",
+                item.item_type === 'color' && !isSelected && "text-pink-500"
               )} />
             </div>
           )}
         </div>
 
         {/* Content Info */}
-        <div className="flex flex-col min-w-0 flex-1 gap-1.5">
-          <div className="flex items-center justify-between">
-            <div className={cn(
-              "truncate text-sm w-full",
-              isSelected ? "font-bold text-foreground" : "font-medium text-foreground/90"
-            )}>
-              {item.item_type === 'image' 
-                ? "Image Capture" 
-                : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
-              }
-            </div>
-          </div>
+        <div className="flex-1 min-w-0 overflow-hidden h-10 flex flex-col justify-center">
           <div className={cn(
-            "text-[11px] flex items-center justify-between font-medium",
-            isSelected ? "text-muted-foreground" : "text-muted-foreground/70"
+            "line-clamp-1 break-all text-sm leading-tight w-full",
+            isSelected ? "font-bold text-foreground" : "font-medium text-foreground/90"
           )}>
-             <span>{item.item_type === 'text' ? 'Text' : item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1)}</span>
-             <span>{getRelativeTime(item.created_at)}</span>
+            {item.item_type === 'image' 
+              ? "Image Capture" 
+              : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
+            }
           </div>
         </div>
       </div>
