@@ -150,7 +150,7 @@ function App() {
         limit: 15, 
         offset,
         search,
-        filter_type: filterType 
+        filterType: filterType 
       });
 
       if (items.length < 15) {
@@ -548,7 +548,7 @@ function App() {
         <div className="w-[30%] min-w-[260px] max-w-[400px] border-r border-border flex flex-col bg-background">
 
           <ScrollArea className="flex-1">
-            <div className="px-2 pb-2 space-y-1">
+            <div className="px-2 pb-2 space-y-1 pt-2">
             {history.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/50 animate-in fade-in zoom-in duration-300">
                 <div className="w-16 h-16 rounded-full bg-secondary/50 flex items-center justify-center mb-4 ring-1 ring-border/30">
