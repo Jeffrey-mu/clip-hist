@@ -24,7 +24,8 @@ import {
   Monitor, 
   Trash2, 
   Download,
-  Upload
+  Upload,
+  Power
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -336,6 +337,23 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
     }
   };
 
+  const handleQuitClick = async () => {
+    try {
+      const confirmed = await ask("确定要退出应用吗？", {
+        title: "退出应用",
+        kind: "warning",
+        okLabel: "退出",
+        cancelLabel: "取消",
+      });
+
+      if (confirmed) {
+        await invoke("quit_app");
+      }
+    } catch (e) {
+      console.error("Failed to quit app:", e);
+    }
+  };
+
   // Effect to apply theme
   useEffect(() => {
     const root = window.document.documentElement;
@@ -515,6 +533,9 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
                         <Upload className="w-4 h-4" /> 导入数据
                     </Button>
                 </div>
+                <Button variant="destructive" className="w-full gap-2" onClick={handleQuitClick}>
+                  <Power className="w-4 h-4" /> 退出应用
+                </Button>
             </section>
           </div>
         </ScrollArea>

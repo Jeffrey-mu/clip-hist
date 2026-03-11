@@ -233,6 +233,8 @@ function App() {
         setTimeout(() => {
           searchInputRef.current?.focus();
         }, 50);
+      } else {
+        setIsSettingsOpen(false);
       }
     });
 

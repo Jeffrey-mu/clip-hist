@@ -574,6 +574,12 @@ fn hide_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 fn delete_before(
     app: AppHandle,
     db: State<'_, Database>,
@@ -586,6 +592,13 @@ fn delete_before(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = move_window_to_mouse_monitor(&window);
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_autostart::init(
@@ -838,6 +851,7 @@ pub fn run() {
             delete_item,
             update_item,
             hide_window,
+            quit_app,
             copy_files,
             get_item_content,
             copy_history_item,
