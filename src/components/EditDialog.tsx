@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface EditDialogProps {
   open: boolean;
@@ -14,6 +15,14 @@ interface EditDialogProps {
 export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave }: EditDialogProps) {
   const [content, setContent] = useState(initialContent);
   const [isLoading, setIsLoading] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const resizeTextarea = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  };
 
   useEffect(() => {
     setContent(initialContent);
@@ -33,6 +42,11 @@ export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave 
         });
     }
   }, [initialContent, open, itemId]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    resizeTextarea();
+  }, [open, content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     e.stopPropagation(); // Stop propagation to prevent global window hide
@@ -76,16 +90,19 @@ export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave 
             {isLoading && <span className="text-xs text-muted-foreground font-normal">(正在加载完整内容...)</span>}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex-1 flex flex-col gap-2">
-          <textarea
-            className="flex-1 min-h-[300px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none font-mono"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            disabled={isLoading}
-          />
-        </div>
+        <ScrollArea className="flex-1 rounded-md border border-input bg-transparent shadow-sm">
+          <div className="p-0">
+            <textarea
+              ref={textareaRef}
+              className="w-full min-h-[300px] bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none font-mono overflow-hidden"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              disabled={isLoading}
+            />
+          </div>
+        </ScrollArea>
         <DialogFooter className="flex justify-between items-center sm:justify-between">
             <div className="text-xs text-muted-foreground flex gap-3">
                 <span><kbd className="font-mono bg-muted px-1 rounded">Esc</kbd> 取消</span>
