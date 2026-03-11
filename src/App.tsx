@@ -491,7 +491,7 @@ function App() {
             <Search className="w-4 h-4 text-muted-foreground/50 mr-2 transition-colors group-focus-within:text-primary/70" />
             <input
               ref={searchInputRef}
-              placeholder="Type to filter..."
+              placeholder="搜索历史记录..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
@@ -500,16 +500,16 @@ function App() {
             
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="h-7 border-0 bg-background/50 hover:bg-background/80 shadow-sm text-xs font-medium text-muted-foreground w-auto px-2 gap-1.5 rounded ml-2 transition-colors focus:ring-0 focus:ring-offset-0">
-                <span className="opacity-70">Type:</span>
-                <SelectValue placeholder="All" />
+                <span className="opacity-70">类型:</span>
+                <SelectValue placeholder="全部" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="text">Text Only</SelectItem>
-                <SelectItem value="image">Images Only</SelectItem>
-                <SelectItem value="file">Files Only</SelectItem>
-                <SelectItem value="link">Links Only</SelectItem>
-                <SelectItem value="color">Colors Only</SelectItem>
+                <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="text">仅文本</SelectItem>
+                <SelectItem value="image">仅图片</SelectItem>
+                <SelectItem value="file">仅文件</SelectItem>
+                <SelectItem value="link">仅链接</SelectItem>
+                <SelectItem value="color">仅颜色</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -519,14 +519,14 @@ function App() {
           <button 
              onClick={() => setViewMode('list')}
              className={cn("p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground", viewMode === 'list' && "bg-background text-primary shadow-sm ring-1 ring-border/10")}
-             title="List View"
+             title="列表视图"
           >
              <List className="w-4 h-4" />
           </button>
           <button 
              onClick={() => setViewMode('grid')}
              className={cn("p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground", viewMode === 'grid' && "bg-background text-primary shadow-sm ring-1 ring-border/10")}
-             title="Grid View"
+             title="网格视图"
           >
              <LayoutGrid className="w-4 h-4" />
           </button>
@@ -555,12 +555,12 @@ function App() {
                   <Search className="w-8 h-8 opacity-40" />
                 </div>
                 <h3 className="font-medium text-foreground/70 mb-1">
-                  {search ? "No matching items" : "Your clipboard is empty"}
+                  {search ? "未找到匹配项" : "剪切板历史为空"}
                 </h3>
                 <p className="text-xs max-w-[200px] text-center opacity-70">
                   {search 
-                    ? "Try adjusting your search or filters to find what you're looking for." 
-                    : "Copy something to see it appear here."}
+                    ? "尝试调整搜索关键词或筛选条件。" 
+                    : "复制一些内容，它们将出现在这里。"}
                 </p>
               </div>
             ) : viewMode === 'list' ? (
@@ -618,8 +618,8 @@ function App() {
                   <Clipboard className="w-10 h-10 opacity-20" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-medium text-foreground/70">No Item Selected</h3>
-                  <p className="text-sm text-muted-foreground/60">Select an item from the list to view details</p>
+                  <h3 className="font-medium text-foreground/70">未选择项目</h3>
+                  <p className="text-sm text-muted-foreground/60">从列表中选择一项以查看详情</p>
                 </div>
               </div>
             </div>
@@ -632,17 +632,17 @@ function App() {
         <div className="flex items-center gap-2">
            <span className="flex items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
               <div className="w-1.5 h-1.5 rounded-full bg-primary/80 shadow-[0_0_4px_rgba(0,122,255,0.4)]" />
-              <span className="font-medium">{history.length} items</span>
+              <span className="font-medium">{history.length} 个项目</span>
            </span>
            <div className="h-3 w-px bg-border/80 mx-2" />
-           <span className="opacity-50">Press ↵ to copy</span>
+           <span className="opacity-50">按 ↵ 复制</span>
         </div>
         <div className="flex items-center gap-4">
            <div 
              className="flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer group" 
              onClick={() => setIsActionsOpen(true)}
            >
-              <span className="group-hover:text-primary transition-colors">Actions</span>
+              <span className="group-hover:text-primary transition-colors">操作</span>
               <kbd className="px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border/50 text-[9px] font-sans min-w-[20px] text-center shadow-sm">{cmdKey}K</kbd>
            </div>
         </div>

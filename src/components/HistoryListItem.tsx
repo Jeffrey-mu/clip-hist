@@ -110,11 +110,22 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
   // Format subtitle text
   const getSubtitle = () => {
     const timeAgo = getRelativeTime(item.created_at);
-    let typeText = item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1);
     
+    let typeText = item.item_type;
+    // Basic translation map
+    const typeMap: Record<string, string> = {
+      'image': '图片',
+      'link': '链接',
+      'color': '颜色',
+      'file': '文件',
+      'text': '文本'
+    };
+    
+    typeText = typeMap[item.item_type] || item.item_type;
+
     if (item.item_type === 'text') {
-      if (item.content.trim().startsWith('http')) typeText = 'Link';
-      else if (item.content.length > 500) typeText = 'Long Text';
+      if (item.content.trim().startsWith('http')) typeText = '链接';
+      else if (item.content.length > 500) typeText = '长文本';
     }
     
     return `${typeText} • ${timeAgo}`;
@@ -185,8 +196,8 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
           isSelected ? "text-foreground" : "text-foreground/90 group-hover:text-foreground"
         )}>
           {item.item_type === 'image' 
-            ? "Image Capture" 
-            : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
+            ? "图片截图" 
+            : <HighlightedText text={item.content.trim().split('\n')[0] || "空内容"} highlight={search} />
           }
         </div>
         

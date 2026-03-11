@@ -26,9 +26,9 @@ export function ActionsDialog({ open, onOpenChange, onAction }: ActionsDialogPro
   const delKey = isMac ? "⌫" : "Del";
 
   const actions = [
-    { id: "copy", label: "Copy to Clipboard", icon: Copy, shortcut: "↵" },
-    { id: "edit", label: "Edit Content", icon: Edit, shortcut: `${cmdKey}+E` },
-    { id: "delete", label: "Delete", icon: Trash2, shortcut: `${cmdKey}+${delKey}`, variant: "destructive" },
+    { id: "copy", label: "复制到剪切板", icon: Copy, shortcut: "↵" },
+    { id: "edit", label: "编辑内容", icon: Edit, shortcut: `${cmdKey}+E` },
+    { id: "delete", label: "删除", icon: Trash2, shortcut: `${cmdKey}+${delKey}`, variant: "destructive" },
   ];
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export function ActionsDialog({ open, onOpenChange, onAction }: ActionsDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px] gap-0 p-0 overflow-hidden bg-popover text-popover-foreground border-border shadow-lg">
         <DialogHeader className="px-4 py-3 border-b border-border/50 bg-muted/20">
-          <DialogTitle className="text-sm font-medium text-muted-foreground">Actions</DialogTitle>
+          <DialogTitle className="text-sm font-medium text-muted-foreground">操作</DialogTitle>
         </DialogHeader>
         <div className="p-2 flex flex-col gap-1">
           {actions.map((action, index) => {

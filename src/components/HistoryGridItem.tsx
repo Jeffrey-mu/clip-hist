@@ -111,7 +111,13 @@ const HistoryGridItem = memo(forwardRef<HTMLDivElement, HistoryGridItemProps>(({
        {/* Overlay Label on Hover */}
        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
           <span className="text-white text-[9px] font-bold uppercase tracking-wider truncate max-w-[80%]">
-             {item.item_type}
+             {{
+                'image': '图片',
+                'link': '链接',
+                'color': '颜色',
+                'file': '文件',
+                'text': '文本'
+             }[item.item_type] || item.item_type}
           </span>
        </div>
        

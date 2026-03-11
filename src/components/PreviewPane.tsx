@@ -102,15 +102,24 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
   const getHeaderInfo = () => {
     if (item.item_type === 'image' || isImageFile) {
         if (imageDims) return `${imageDims.w} × ${imageDims.h}`;
-        return "Image";
+        return "图片";
     }
     if (item.item_type === 'color') return item.content.toUpperCase();
     if (item.item_type === 'text') {
         const lines = content.split('\n').length;
         const chars = content.length;
-        return `${lines} Lines | ${chars} Chars`;
+        return `${lines} 行 | ${chars} 字符`;
     }
-    return item.item_type.toUpperCase();
+    
+    // Fallback translation for other types
+    const typeMap: Record<string, string> = {
+        'file': '文件',
+        'link': '链接',
+        'text': '文本',
+        'image': '图片',
+        'color': '颜色'
+    };
+    return (typeMap[item.item_type] || item.item_type).toUpperCase();
   };
 
   const Icon = item.item_type === 'image' ? ImageIcon :
@@ -126,7 +135,7 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
           <button 
             onClick={handleCopy}
             className="p-2 rounded-lg bg-background/80 backdrop-blur border border-border/50 shadow-sm hover:bg-primary/10 hover:text-primary transition-colors text-muted-foreground"
-            title="Copy to Clipboard"
+            title="复制到剪切板"
           >
             {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
           </button>
@@ -143,14 +152,14 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
               }
             }}
             className="p-2 rounded-lg bg-background/80 backdrop-blur border border-border/50 shadow-sm hover:bg-primary/10 hover:text-primary transition-colors text-muted-foreground"
-            title="Share"
+            title="分享"
           >
             <Share2 className="w-4 h-4" />
           </button>
           <button 
             onClick={onDelete}
             className="p-2 rounded-lg bg-background/80 backdrop-blur border border-border/50 shadow-sm hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
-             title="Delete Item"
+            title="删除项目"
           >
             <Trash2 className="w-4 h-4" />
           </button>

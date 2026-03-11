@@ -72,8 +72,8 @@ export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave 
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Edit Content
-            {isLoading && <span className="text-xs text-muted-foreground font-normal">(Loading full content...)</span>}
+            编辑内容
+            {isLoading && <span className="text-xs text-muted-foreground font-normal">(正在加载完整内容...)</span>}
           </DialogTitle>
         </DialogHeader>
         <div className="flex-1 flex flex-col gap-2">
@@ -88,12 +88,12 @@ export function EditDialog({ open, onOpenChange, initialContent, itemId, onSave 
         </div>
         <DialogFooter className="flex justify-between items-center sm:justify-between">
             <div className="text-xs text-muted-foreground flex gap-3">
-                <span><kbd className="font-mono bg-muted px-1 rounded">Esc</kbd> Cancel</span>
-                <span><kbd className="font-mono bg-muted px-1 rounded">⌘/Ctrl + Enter</kbd> Save</span>
+                <span><kbd className="font-mono bg-muted px-1 rounded">Esc</kbd> 取消</span>
+                <span><kbd className="font-mono bg-muted px-1 rounded">⌘/Ctrl + Enter</kbd> 保存</span>
             </div>
             <div className="flex gap-2">
-                <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                <Button onClick={handleSave}>Save Changes</Button>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+                <Button onClick={handleSave}>保存修改</Button>
             </div>
         </DialogFooter>
       </DialogContent>
