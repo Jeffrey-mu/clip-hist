@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,17 +17,22 @@ import { EditDialog } from "@/components/EditDialog";
 import { 
   Clipboard, 
   Search,
-  Image as ImageIcon,
   Settings,
+  LayoutGrid,
+  List,
 } from "lucide-react";
-import HistoryListItem, { HighlightedText } from "@/components/HistoryListItem";
+import HistoryListItem from "@/components/HistoryListItem";
 import { HistoryItem } from "@/types";
 
 import { type } from "@tauri-apps/plugin-os";
 
+import { PreviewPane } from "@/components/PreviewPane";
+import HistoryGridItem from "@/components/HistoryGridItem";
+import { cn } from "@/lib/utils";
 
 function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -38,7 +43,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewData, setPreviewData] = useState<{ id: number, content: string } | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [imageError, setImageError] = useState(false);
   
   const previewCache = useRef<Map<number, string>>(new Map());
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -47,11 +51,6 @@ function App() {
   const observer = useRef<IntersectionObserver | null>(null);
 
   const [osType, setOsType] = useState<string>("");
-
-  const currentItem = history[selectedIndex];
-  useEffect(() => {
-    setImageError(false);
-  }, [currentItem?.id, currentItem?.content]);
 
   // Refs for current state to use in callbacks/effects
   const historyRef = useRef(history);
@@ -460,39 +459,11 @@ function App() {
     setSelectedIndex(0);
   }, [search, filterType]);
 
-  const getWordCount = (text: string) => {
-    return text.trim().split(/\s+/).filter(w => w.length > 0).length;
-  };
-
-
-  const getRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) {
-      const hours = Math.floor(diffInSeconds / 3600);
-      return `${hours}h ago`;
-    }
-    
-    // Check if it was yesterday
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    }
-
-    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-    
-    return date.toLocaleDateString();
-  };
-
 
   const handleSelect = useCallback((index: number) => {
     setSelectedIndex(index);
   }, []);
+
 
   const handleItemDoubleClick = useCallback((index: number) => {
     const item = historyRef.current[index];
@@ -500,150 +471,6 @@ function App() {
       handleCopy(item);
     }
   }, [handleCopy]);
-
-  // Component for lazy loading images in the list
-
-  const renderPreview = (item: HistoryItem) => {
-    if (isPreviewLoading) {
-      return (
-        <div className="flex flex-col h-full bg-background items-center justify-center text-muted-foreground">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      );
-    }
-
-    const contentToDisplay = (previewData?.id === item.id ? previewData.content : null) || item.content;
-
-    // Detect if the file is an image
-    const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
-    const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
-    const displayImageSrc = item.item_type === 'image' 
-        ? contentToDisplay 
-        : isImageFile 
-            ? convertFileSrc(firstFilePath, 'asset') 
-            : null;
-
-    // Unified Preview Layout
-    return (
-      <div className="flex flex-col h-full bg-card overflow-hidden border-l border-border font-sans text-foreground">
-        
-        <div className="flex-grow p-6 overflow-hidden flex flex-col bg-secondary/50">
-          <div className="flex items-center gap-2 mb-3 shrink-0">
-             <span className="text-[11px] font-bold text-muted-foreground tracking-wider uppercase">Content Preview</span>
-             <div className="h-px flex-grow bg-border"></div>
-             <span className="text-[10px] text-muted-foreground font-medium opacity-70">Read Only</span>
-          </div>
-          
-          {item.item_type === 'color' ? (
-            <div 
-              className="flex flex-col items-center justify-center h-full gap-4 bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-              onContextMenu={(e) => e.nativeEvent.stopPropagation()}
-            >
-              <div 
-                className="w-32 h-32 rounded-xl shadow-inner border border-border/50"
-                style={{ backgroundColor: item.content }}
-              />
-              <div className="text-center">
-                <p className="font-mono text-xl font-bold text-foreground">{item.content}</p>
-                <p className="text-sm text-muted-foreground mt-1">Color Preview</p>
-              </div>
-            </div>
-          ) : (item.item_type === 'image' || isImageFile) ? (
-             <div 
-               className="flex-col flex h-full bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden"
-               onContextMenu={(e) => e.nativeEvent.stopPropagation()}
-             >
-                {displayImageSrc && !imageError ? (
-                  <div className="flex-1 flex items-center justify-center bg-secondary/30 relative w-full h-full overflow-hidden p-4">
-                     <img 
-                        src={displayImageSrc} 
-                        alt="Preview" 
-                        className="w-full h-full object-contain rounded-lg shadow-sm"
-                        onError={() => setImageError(true)}
-                      />
-                  </div>
-                ) : (
-                   <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                      <ImageIcon className="w-8 h-8 opacity-20" />
-                      <span className="text-sm opacity-50">{imageError ? "Image load failed" : "Image not available"}</span>
-                   </div>
-                )}
-             </div>
-          ) : (
-            <ScrollArea 
-              className="flex-grow bg-card rounded-xl border border-border shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-              onContextMenu={(e) => e.nativeEvent.stopPropagation()}
-            >
-              <div className="p-4">
-                <pre ref={contentRef} className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words text-foreground/90 select-text font-medium">
-                  <HighlightedText text={contentToDisplay} highlight={search} />
-                </pre>
-              </div>
-            </ScrollArea>
-          )}
-        </div>
-        
-        <div className="px-8 py-6 bg-card border-t border-border shrink-0">
-          <div className="grid grid-cols-[100px_1fr] gap-y-4 items-center text-[13px]">
-            <div className="text-[12px] text-muted-foreground font-medium">Content type</div>
-            <div>
-              <span className="px-2 py-0.5 bg-secondary text-foreground text-[11px] font-bold rounded border border-border inline-block">
-                {item.item_type === 'text' ? 'TEXT' : item.item_type.toUpperCase()}
-              </span>
-            </div>
-
-            {item.item_type === 'image' ? (
-               <>
-                 <div className="text-[12px] text-muted-foreground font-medium">Source</div>
-                 <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">Clipboard</div>
-               </>
-            ) : isImageFile ? (
-               <>
-                 <div className="text-[12px] text-muted-foreground font-medium">Source</div>
-                 <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">Local File</div>
-               </>
-            ) : (
-               <>
-                <div className="text-[12px] text-muted-foreground font-medium">Characters</div>
-                <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">{contentToDisplay.length.toLocaleString()}</div>
-
-                <div className="text-[12px] text-muted-foreground font-medium">Words</div>
-                <div className="text-[13px] font-mono font-bold text-foreground tabular-nums">{getWordCount(contentToDisplay).toLocaleString()}</div>
-               </>
-            )}
-
-            <div className="text-[12px] text-muted-foreground font-medium">Created</div>
-            <div className="text-[12px] text-foreground font-medium italic">
-              {getRelativeTime(item.created_at)}
-            </div>
-          </div>
-        </div>
-
-        <div className="h-10 px-6 flex items-center justify-between text-[11px] border-t border-border bg-muted/30 shrink-0">
-          <div className="flex items-center gap-2">
-             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.4)]"></div>
-             <span className="font-bold text-muted-foreground tracking-wide text-[10px]">SYNCING ENABLED</span>
-          </div>
-          <div className="flex gap-4 font-semibold text-foreground">
-             <div 
-               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors group"
-               onClick={() => handleCopy(item)}
-             >
-               <span>Copy</span> 
-               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">↵</kbd>
-             </div>
-             <div 
-               className="flex items-center gap-1 cursor-pointer hover:text-primary transition-colors group"
-               onClick={() => setIsActionsOpen(true)}
-             >
-               <span>Actions</span> 
-               <kbd className="ml-1 px-1 py-0.5 rounded bg-foreground/5 border border-border/50 text-[9px] font-sans opacity-70 group-hover:border-primary/30 group-hover:text-primary/70 transition-all">{cmdKey}K</kbd>
-             </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
 
   return (
@@ -657,34 +484,56 @@ function App() {
       </div>
 
       {/* Top Search Bar Area */}
-      <div className="flex items-center gap-4 p-4 border-b border-border bg-background shrink-0 z-10">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-          <input
-            ref={searchInputRef}
-            placeholder="Type to filter..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            autoFocus
-            className="flex h-9 w-full rounded-md border-0 bg-secondary/50 px-3 pl-9 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          />
+      <div className="flex items-center gap-3 p-3 border-b border-border bg-background/95 backdrop-blur shrink-0 z-10 transition-all duration-200">
+        <div className="relative flex-1 group">
+          <div className="absolute inset-0 bg-secondary/40 rounded-lg transition-all duration-200 group-focus-within:bg-secondary/60 group-focus-within:ring-2 group-focus-within:ring-primary/20" />
+          <div className="relative flex items-center px-3 h-10">
+            <Search className="w-4 h-4 text-muted-foreground/50 mr-2 transition-colors group-focus-within:text-primary/70" />
+            <input
+              ref={searchInputRef}
+              placeholder="Type to filter..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+              className="flex-1 bg-transparent border-0 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 h-full text-foreground"
+            />
+            
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-7 border-0 bg-background/50 hover:bg-background/80 shadow-sm text-xs font-medium text-muted-foreground w-auto px-2 gap-1.5 rounded ml-2 transition-colors focus:ring-0 focus:ring-offset-0">
+                <span className="opacity-70">Type:</span>
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="text">Text Only</SelectItem>
+                <SelectItem value="image">Images Only</SelectItem>
+                <SelectItem value="file">Files Only</SelectItem>
+                <SelectItem value="link">Links Only</SelectItem>
+                <SelectItem value="color">Colors Only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[140px] h-9 bg-secondary/50 border-0 shadow-sm focus:ring-1 focus:ring-ring text-sm font-medium text-muted-foreground">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="text">Text Only</SelectItem>
-            <SelectItem value="image">Images Only</SelectItem>
-            <SelectItem value="file">Files Only</SelectItem>
-            <SelectItem value="link">Links Only</SelectItem>
-            <SelectItem value="color">Colors Only</SelectItem>
-          </SelectContent>
-        </Select>
 
-        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground/70 hover:text-foreground hover:bg-secondary/80 rounded-md transition-all" onClick={() => setIsSettingsOpen(true)}>
-          <Settings className="w-4 h-4" />
+        <div className="flex items-center bg-secondary/40 p-1 rounded-lg border border-border/10 shrink-0">
+          <button 
+             onClick={() => setViewMode('list')}
+             className={cn("p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground", viewMode === 'list' && "bg-background text-primary shadow-sm ring-1 ring-border/10")}
+             title="List View"
+          >
+             <List className="w-4 h-4" />
+          </button>
+          <button 
+             onClick={() => setViewMode('grid')}
+             className={cn("p-1.5 rounded-md transition-all text-muted-foreground hover:text-foreground", viewMode === 'grid' && "bg-background text-primary shadow-sm ring-1 ring-border/10")}
+             title="Grid View"
+          >
+             <LayoutGrid className="w-4 h-4" />
+          </button>
+        </div>
+
+        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground/70 hover:text-foreground hover:bg-secondary/80 rounded-lg transition-all" onClick={() => setIsSettingsOpen(true)}>
+          <Settings className="w-5 h-5" />
         </Button>
         <SettingsDialog 
           open={isSettingsOpen} 
@@ -701,10 +550,20 @@ function App() {
           <ScrollArea className="flex-1">
             <div className="px-2 pb-2 space-y-1">
             {history.length === 0 ? (
-              <div className="text-center text-muted-foreground py-12 text-sm">
-                {search ? "No matching items" : "Clipboard is empty"}
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/50 animate-in fade-in zoom-in duration-300">
+                <div className="w-16 h-16 rounded-full bg-secondary/50 flex items-center justify-center mb-4 ring-1 ring-border/30">
+                  <Search className="w-8 h-8 opacity-40" />
+                </div>
+                <h3 className="font-medium text-foreground/70 mb-1">
+                  {search ? "No matching items" : "Your clipboard is empty"}
+                </h3>
+                <p className="text-xs max-w-[200px] text-center opacity-70">
+                  {search 
+                    ? "Try adjusting your search or filters to find what you're looking for." 
+                    : "Copy something to see it appear here."}
+                </p>
               </div>
-            ) : (
+            ) : viewMode === 'list' ? (
                <>
                 {history.map((item, index) => (
                   <HistoryListItem
@@ -719,6 +578,20 @@ function App() {
                   />
                 ))}
                </>
+            ) : (
+               <div className="grid grid-cols-2 gap-2 p-1">
+                  {history.map((item, index) => (
+                    <HistoryGridItem
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      isSelected={index === selectedIndex}
+                      onSelect={handleSelect}
+                      onDoubleClick={handleItemDoubleClick}
+                      ref={(el) => { if (el) itemRefs.current[index] = el; }}
+                    />
+                  ))}
+               </div>
             )}
             <div ref={lastItemRef} className="h-4" />
             </div>
@@ -728,25 +601,54 @@ function App() {
         </div>
 
         {/* Right Content: Preview & Details */}
-        <div className="flex-1 flex flex-col bg-card h-full overflow-hidden">
+        <div className="flex-1 flex flex-col bg-card h-full overflow-hidden relative border-l border-border/50">
           {selectedItem ? (
-            renderPreview(selectedItem)
+             <PreviewPane 
+                item={selectedItem}
+                content={(previewData?.id === selectedItem.id ? previewData.content : null) || selectedItem.content}
+                isLoading={isPreviewLoading}
+                search={search}
+                onCopy={() => handleCopy(selectedItem)}
+                onDelete={() => handleDelete(selectedItem)}
+             />
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground/40 bg-card">
-              <div className="flex flex-col items-center gap-3">
-                <div className="p-4 rounded-full bg-muted/30">
-                  <Clipboard className="w-8 h-8 opacity-50" />
+              <div className="flex flex-col items-center gap-4 text-center p-8">
+                <div className="w-24 h-24 bg-secondary/50 rounded-full flex items-center justify-center mb-2 animate-pulse">
+                  <Clipboard className="w-10 h-10 opacity-20" />
                 </div>
-                <p className="text-sm font-medium">Select an item to view details</p>
+                <div className="space-y-1">
+                  <h3 className="font-medium text-foreground/70">No Item Selected</h3>
+                  <p className="text-sm text-muted-foreground/60">Select an item from the list to view details</p>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
       
-      {/* Footer Status Bar (Original Footer - Removing since we moved it to Preview Pane) */}
+      {/* Global Status Bar */}
+      <div className="h-9 border-t border-border bg-background/95 backdrop-blur flex items-center justify-between px-4 text-[11px] text-muted-foreground select-none shrink-0 z-20">
+        <div className="flex items-center gap-2">
+           <span className="flex items-center gap-2 opacity-70 hover:opacity-100 transition-opacity">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/80 shadow-[0_0_4px_rgba(0,122,255,0.4)]" />
+              <span className="font-medium">{history.length} items</span>
+           </span>
+           <div className="h-3 w-px bg-border/80 mx-2" />
+           <span className="opacity-50">Press ↵ to copy</span>
+        </div>
+        <div className="flex items-center gap-4">
+           <div 
+             className="flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer group" 
+             onClick={() => setIsActionsOpen(true)}
+           >
+              <span className="group-hover:text-primary transition-colors">Actions</span>
+              <kbd className="px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border/50 text-[9px] font-sans min-w-[20px] text-center shadow-sm">{cmdKey}K</kbd>
+           </div>
+        </div>
+      </div> 
       
-      <ActionsDialog 
+      <ActionsDialog
         open={isActionsOpen} 
         onOpenChange={setIsActionsOpen} 
         onAction={handleAction} 

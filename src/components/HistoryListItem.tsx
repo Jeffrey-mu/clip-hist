@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, memo, forwardRef } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { cn } from "@/lib/utils";
+import { cn, getRelativeTime } from "@/lib/utils";
 import { 
   FileText,
   Image as ImageIcon,
@@ -9,6 +9,7 @@ import {
   File as FileIcon,
   Code as CodeIcon,
   Terminal,
+  CornerDownLeft
 } from "lucide-react";
 import { HistoryItem } from "@/types";
 
@@ -104,8 +105,21 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
       };
     }, [item.id, item.item_type, imageContent]);
 
-    const Icon = getTypeIcon(item.item_type, item.content);
+  const Icon = getTypeIcon(item.item_type, item.content);
   
+  // Format subtitle text
+  const getSubtitle = () => {
+    const timeAgo = getRelativeTime(item.created_at);
+    let typeText = item.item_type.charAt(0).toUpperCase() + item.item_type.slice(1);
+    
+    if (item.item_type === 'text') {
+      if (item.content.trim().startsWith('http')) typeText = 'Link';
+      else if (item.content.length > 500) typeText = 'Long Text';
+    }
+    
+    return `${typeText} • ${timeAgo}`;
+  };
+
   return (
     <div
       ref={(el) => {
@@ -114,18 +128,23 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
         else if (ref) (ref as any).current = el;
       }}
       className={cn(
-        "mx-2 px-3 py-2 cursor-pointer text-sm transition-all flex items-center gap-3 mb-0.5 rounded-md relative overflow-hidden max-w-full",
+        "group mx-2 mb-1 px-3 py-2 cursor-pointer transition-all flex items-center gap-3 rounded-xl relative overflow-hidden h-14 border border-transparent",
         isSelected
-          ? "bg-accent shadow-sm"
-          : "hover:bg-accent/50"
+          ? "bg-primary/15 shadow-sm border-primary/10"
+          : "hover:bg-secondary/80 hover:border-border/40"
       )}
       onClick={() => onSelect(index)}
       onDoubleClick={() => onDoubleClick(index)}
     >
+      {/* Active Indicator Strip */}
+      {isSelected && (
+        <div className="absolute left-0 top-3 bottom-3 w-[2px] bg-primary rounded-r-full shadow-[0_0_8px_rgba(0,122,255,0.4)]" />
+      )}
+
       {/* Icon or Thumbnail */}
       <div className="shrink-0 w-10 h-10 flex items-center justify-center">
         {(item.item_type === 'image' || isImageFile) ? (
-          <div className="w-full h-full overflow-hidden border border-border bg-secondary/30 rounded-md flex items-center justify-center relative shadow-sm">
+          <div className="w-full h-full overflow-hidden border border-border/60 bg-secondary/30 rounded-lg flex items-center justify-center relative shadow-sm group-hover:shadow transition-all">
             {((item.item_type === 'image' && imageContent) || isImageFile) ? (
               <img 
                 src={item.item_type === 'image' ? imageContent! : convertFileSrc(firstFilePath, 'asset')} 
@@ -133,40 +152,62 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="flex items-center justify-center w-full h-full">
+              <div className="flex items-center justify-center w-full h-full bg-secondary/50">
                 {isLoadingImage ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary/50"></div>
                 ) : (
-                  <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
+                  <ImageIcon className="w-4 h-4 text-muted-foreground/40" />
                 )}
               </div>
             )}
           </div>
         ) : (
            <div className={cn(
-             "w-10 h-10 flex items-center justify-center shrink-0 rounded-md shadow-sm transition-colors",
-             isSelected ? "bg-background border border-border" : "bg-background/50 border border-border/10"
+             "w-10 h-10 flex items-center justify-center shrink-0 rounded-lg shadow-sm transition-all border",
+             isSelected 
+               ? "bg-background border-border shadow-inner" 
+               : "bg-background/60 border-border/40 group-hover:bg-background group-hover:border-border/60"
            )}>
             <Icon className={cn(
               "w-5 h-5 transition-colors", 
-              isSelected ? "text-primary" : "text-muted-foreground/70",
-              item.item_type === 'text' && !isSelected && "text-blue-500/70",
-              item.item_type === 'link' && !isSelected && "text-sky-500",
-              item.item_type === 'file' && !isSelected && "text-orange-500",
-              item.item_type === 'color' && !isSelected && "text-pink-500"
+              isSelected ? "text-primary" : "text-muted-foreground/60 group-hover:text-muted-foreground/80",
+              item.item_type === 'color' && "text-pink-500/80"
             )} />
           </div>
         )}
       </div>
 
-      {/* Content Info */}
-      <div className="flex-1 min-w-0 overflow-hidden h-10 flex flex-col justify-center">
-        <div className="line-clamp-1 break-all text-sm leading-tight w-full font-medium text-foreground">
+      {/* Content Info (Double Line) */}
+      <div className="flex-1 min-w-0 overflow-hidden flex flex-col justify-center gap-0.5">
+        {/* Main Title */}
+        <div className={cn(
+          "line-clamp-1 break-all text-[13px] leading-tight w-full font-semibold transition-colors",
+          isSelected ? "text-foreground" : "text-foreground/90 group-hover:text-foreground"
+        )}>
           {item.item_type === 'image' 
             ? "Image Capture" 
             : <HighlightedText text={item.content.trim().split('\n')[0] || "Empty content"} highlight={search} />
           }
         </div>
+        
+        {/* Subtitle */}
+        <div className={cn(
+          "text-[11px] leading-tight truncate font-medium flex items-center gap-2 transition-colors",
+          isSelected ? "text-primary/80" : "text-muted-foreground/60 group-hover:text-muted-foreground/80"
+        )}>
+          {getSubtitle()}
+        </div>
+      </div>
+      
+      {/* Right Action Hint (Enter) */}
+      <div className={cn(
+        "absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-200",
+        "opacity-0 group-hover:opacity-100",
+        isSelected && "opacity-0" // Hide on selected since it's already focused? Or maybe show? User said "when hover".
+      )}>
+         <div className="flex items-center justify-center w-6 h-6 rounded bg-background/80 border border-border/50 shadow-sm backdrop-blur-sm">
+            <CornerDownLeft className="w-3 h-3 text-muted-foreground" />
+         </div>
       </div>
     </div>
   );
