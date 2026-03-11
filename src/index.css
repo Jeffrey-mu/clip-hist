@@ -78,41 +78,14 @@
   body {
     @apply text-foreground font-sans antialiased;
   }
-}
 
-/* Custom Scrollbar Styles */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.3); /* gray-400 with opacity */
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(156, 163, 175, 0.5);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
-}
-
-.dark * {
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  /* Force hide native scrollbar in Radix ScrollArea Viewport */
+  [data-radix-scroll-area-viewport] {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;  /* IE 10+ */
+  }
+  
+  [data-radix-scroll-area-viewport]::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/Webkit */
+  }
 }
