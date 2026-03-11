@@ -231,7 +231,11 @@ function App() {
     const unlistenFocusPromise = appWindow.onFocusChanged(({ payload: focused }) => {
       if (focused) {
         setTimeout(() => {
-          searchInputRef.current?.focus();
+          const el = searchInputRef.current;
+          el?.focus();
+          if (el && el.value) {
+            el.select();
+          }
         }, 50);
       } else {
         setIsSettingsOpen(false);
