@@ -478,9 +478,33 @@ function App() {
     }
   }, [handleCopy]);
 
+  const handleRootPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if (isActionsOpenRef.current || isEditOpenRef.current || isSettingsOpenRef.current) return;
+
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (target === searchInputRef.current) return;
+    if (target.closest("input, textarea, [contenteditable='true'], [role='dialog']")) return;
+    if (target.closest("pre, code, .select-text")) return;
+    if (target.closest("[data-radix-popper-content-wrapper]")) return;
+
+    requestAnimationFrame(() => {
+      if (isActionsOpenRef.current || isEditOpenRef.current || isSettingsOpenRef.current) return;
+      const el = searchInputRef.current;
+      if (!el) return;
+      if (document.activeElement === el) return;
+      el.focus();
+      if (el.value) el.select();
+    });
+  }, []);
+
 
   return (
-    <div className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans">
+    <div
+      className="h-screen w-screen bg-background text-foreground flex flex-col overflow-hidden font-sans"
+      onPointerDownCapture={handleRootPointerDownCapture}
+    >
       {/* Draggable Top Bar */}
       <div 
         data-tauri-drag-region 
