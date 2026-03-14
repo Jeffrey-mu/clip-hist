@@ -45,12 +45,29 @@ function App() {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   
   const previewCache = useRef<Map<number, string>>(new Map());
+  const previewCacheMaxSize = 100;
+  const setPreviewCache = useCallback((id: number, content: string) => {
+    const cache = previewCache.current;
+    if (cache.has(id)) cache.delete(id);
+    cache.set(id, content);
+    while (cache.size > previewCacheMaxSize) {
+      const firstKey = cache.keys().next().value as number | undefined;
+      if (firstKey === undefined) break;
+      cache.delete(firstKey);
+    }
+  }, []);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLPreElement>(null);
   const observer = useRef<IntersectionObserver | null>(null);
 
   const [osType, setOsType] = useState<string>("");
+  const searchRef = useRef(search);
+  const filterTypeRef = useRef(filterType);
+  const isLoadingRef = useRef(isLoading);
+  searchRef.current = search;
+  filterTypeRef.current = filterType;
+  isLoadingRef.current = isLoading;
 
   // Refs for current state to use in callbacks/effects
   const historyRef = useRef(history);
@@ -134,8 +151,9 @@ function App() {
   const isMac = osType === "macos";
   const cmdKey = isMac ? "⌘" : "Ctrl";
 
-  const fetchHistory = async (isReset = false, preserveSelection = false) => {
-    if (isLoading && !isReset) return;
+  const fetchHistory = useCallback(async (isReset = false, preserveSelection = false) => {
+    if (isLoadingRef.current && !isReset) return;
+    isLoadingRef.current = true;
     setIsLoading(true);
 
     // Capture current selection state before async call
@@ -149,8 +167,8 @@ function App() {
       const items = await invoke<HistoryItem[]>("get_history", { 
         limit: 15, 
         offset,
-        search,
-        filterType: filterType 
+        search: searchRef.current,
+        filterType: filterTypeRef.current
       });
 
       if (items.length < 15) {
@@ -183,14 +201,15 @@ function App() {
     } catch (error) {
       console.error("Failed to fetch history:", error);
     } finally {
+      isLoadingRef.current = false;
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // Initial load, Search, and Filter change
   useEffect(() => {
     fetchHistory(true, false);
-  }, [search, filterType]);
+  }, [search, filterType, fetchHistory]);
 
   // Run history cleanup on app start and set defaults
   useEffect(() => {
@@ -246,7 +265,7 @@ function App() {
       unlistenPromise.then((unlisten) => unlisten());
       unlistenFocusPromise.then((unlisten) => unlisten());
     };
-  }, [search]); // Re-bind listener if search changes? No, search is read from closure? 
+  }, [fetchHistory]); // Re-bind listener if search changes? No, search is read from closure? 
   // Wait, if search changes, fetchHistory closure in listener is stale?
   // Yes. I should use a ref for search too if I want to respect current search on update?
   // Or just reset search on clipboard update?
@@ -285,6 +304,7 @@ function App() {
     try {
       await invoke("clear_history");
       setHistory([]);
+      previewCache.current.clear();
       setIsSettingsOpen(false);
     } catch (error) {
       console.error("Failed to clear history:", error);
@@ -306,6 +326,7 @@ function App() {
   const handleDelete = async (item: HistoryItem) => {
     try {
       await invoke("delete_item", { id: item.id });
+      previewCache.current.delete(item.id);
       setHistory(prev => prev.filter(i => i.id !== item.id));
       if (selectedIndex >= history.length - 1) {
           setSelectedIndex(Math.max(0, history.length - 2));
@@ -320,7 +341,7 @@ function App() {
     try {
       await invoke("update_item", { id: selectedItem.id, content: newContent });
       // Update cache immediately
-      previewCache.current.set(selectedItem.id, newContent);
+      setPreviewCache(selectedItem.id, newContent);
       setHistory(prev => prev.map(i => i.id === selectedItem.id ? { ...i, content: newContent } : i));
     } catch (error) {
       console.error("Failed to update item:", error);
@@ -359,7 +380,7 @@ function App() {
         try {
           const content = await invoke<string>('get_item_content', { id: currentId });
           if (active) {
-            previewCache.current.set(currentId, content);
+            setPreviewCache(currentId, content);
             setPreviewData({ id: currentId, content });
           }
         } catch (e) {
