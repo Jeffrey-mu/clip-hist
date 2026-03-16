@@ -740,9 +740,10 @@ pub fn run() {
             let _handle = app.handle();
 
             // Setup Tray
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Show History", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let show_i = MenuItem::with_id(app, "show", "显示历史", true, None::<&str>)?;
+            let settings_i = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &settings_i, &quit_i])?;
 
             if let Some(icon) = app.default_window_icon().cloned() {
                 let _tray = TrayIconBuilder::with_id("tray")
@@ -759,6 +760,14 @@ pub fn run() {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
+                        }
+                        "settings" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = move_window_to_mouse_monitor(&window);
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                            let _ = app.emit("open-settings", ());
                         }
                         _ => {}
                     })

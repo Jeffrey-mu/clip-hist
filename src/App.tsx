@@ -244,6 +244,12 @@ function App() {
       // Pass true to preserve selection on clipboard update
       fetchHistory(true, true);
     });
+
+    const unlistenOpenSettingsPromise = listen("open-settings", (_) => {
+      setIsActionsOpen(false);
+      setIsEditOpen(false);
+      setIsSettingsOpen(true);
+    });
     
     // Auto-focus input when window gains focus
     const appWindow = getCurrentWindow();
@@ -263,6 +269,7 @@ function App() {
 
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
+      unlistenOpenSettingsPromise.then((unlisten) => unlisten());
       unlistenFocusPromise.then((unlisten) => unlisten());
     };
   }, [fetchHistory]); // Re-bind listener if search changes? No, search is read from closure? 
