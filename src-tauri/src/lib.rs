@@ -369,7 +369,12 @@ fn copy_item(app: AppHandle, content: String, should_paste: Option<bool>) -> Res
 }
 
 #[tauri::command]
-fn copy_history_item(app: AppHandle, db: State<'_, Database>, id: i64, should_paste: Option<bool>) -> Result<(), String> {
+fn copy_history_item(
+    app: AppHandle,
+    db: State<'_, Database>,
+    id: i64,
+    should_paste: Option<bool>,
+) -> Result<(), String> {
     match db.get_item(id) {
         Ok(Some(item)) => {
             if item.item_type == "file" {
@@ -415,6 +420,8 @@ fn copy_history_item(app: AppHandle, db: State<'_, Database>, id: i64, should_pa
                 {
                     clipboard::copy_to_clipboard(&item.content)?;
                 }
+            } else if item.item_type == "color" {
+                clipboard::copy_to_clipboard(&item.content)?;
             } else {
                 clipboard::copy_to_clipboard(&item.content)?;
             }
@@ -499,6 +506,7 @@ fn update_shortcut(
     app: AppHandle,
     state: State<'_, GlobalShortcutState>,
     shortcut: String,
+    persist: Option<bool>,
 ) -> Result<(), String> {
     let mut current_shortcut = state.0.lock().map_err(|_| "Failed to lock state")?;
 
@@ -515,6 +523,11 @@ fn update_shortcut(
         app.global_shortcut()
             .register(shortcut.as_str())
             .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    }
+
+    let should_persist = persist.unwrap_or(true);
+    if !should_persist {
+        return Ok(());
     }
 
     *current_shortcut = Some(shortcut.clone());

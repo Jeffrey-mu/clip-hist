@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { HistoryItem } from "@/types";
-import { getRelativeTime } from "@/lib/utils";
+import { getRelativeTime, parseColorString, rgbToHexString } from "@/lib/utils";
 import { HighlightedText } from "./HistoryListItem";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { 
@@ -93,6 +93,16 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
           ? convertFileSrc(content.trim().split('\n')[0], 'asset') 
           : null;
 
+  const displayColor = (content || item.content).trim();
+  
+  const getCssColor = (raw: string) => {
+    const parsed = parseColorString(raw);
+    if (parsed) return rgbToHexString(parsed, true, false);
+    return raw.trim().replace(/;$/, '');
+  };
+  
+  const swatchColor = getCssColor(displayColor);
+
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setImageDims({ w: img.naturalWidth, h: img.naturalHeight });
@@ -104,7 +114,7 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
         if (imageDims) return `${imageDims.w} × ${imageDims.h}`;
         return "图片";
     }
-    if (item.item_type === 'color') return item.content.toUpperCase();
+    if (item.item_type === 'color') return displayColor;
     if (item.item_type === 'text') {
         const lines = content.split('\n').length;
         const chars = content.length;
@@ -182,12 +192,12 @@ export function PreviewPane({ item, content, isLoading, search, onCopy, onDelete
        <div className="flex-grow overflow-hidden relative bg-secondary/20">
           {item.item_type === 'color' ? (
              <div className="flex items-center justify-center h-full p-8">
-                <div className="flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center gap-6">
                    <div 
-                      className="w-40 h-40 rounded-2xl shadow-lg border-4 border-card ring-1 ring-border/10"
-                      style={{ backgroundColor: item.content }}
+                      className="w-40 h-40 rounded-full border-[8px] border-black/10 dark:border-white/10"
+                      style={{ backgroundColor: swatchColor }}
                    />
-                   <span className="font-mono text-2xl font-bold tracking-wider select-all">{item.content}</span>
+                   <span className="font-mono text-2xl font-bold tracking-wider select-all">{displayColor}</span>
                 </div>
              </div>
           ) : (displayImageSrc && !imageError) ? (

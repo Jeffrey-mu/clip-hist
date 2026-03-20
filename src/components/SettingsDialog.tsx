@@ -40,7 +40,7 @@ const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: st
   const shouldRestore = useRef(true);
 
   useEffect(() => {
-    setOsType(type());
+    Promise.resolve(type()).then(setOsType).catch(() => setOsType(""));
   }, []);
 
   useEffect(() => {
@@ -48,12 +48,12 @@ const ShortcutRecorder = ({ value, onChange }: { value: string, onChange: (v: st
       setOriginalShortcut(value);
       shouldRestore.current = true;
       // Temporarily unregister shortcut to allow recording same keys
-      invoke("update_shortcut", { shortcut: "" }).catch(console.error);
+      invoke("update_shortcut", { shortcut: "", persist: false }).catch(console.error);
     } else {
        // Only restore if cancelled (shouldRestore is true). 
        // If committed (shouldRestore is false), parent handles update.
        if (shouldRestore.current && originalShortcut) {
-          invoke("update_shortcut", { shortcut: originalShortcut }).catch(console.error);
+          invoke("update_shortcut", { shortcut: originalShortcut, persist: false }).catch(console.error);
        }
     }
   }, [recording]);
@@ -184,7 +184,7 @@ export function SettingsDialog({ open, onOpenChange, onClearHistory }: SettingsD
   const [theme, setTheme] = useState("system");
   const [historyDuration, setHistoryDuration] = useState("3");
   const [autostart, setAutostart] = useState(false);
-  const [globalShortcut, setGlobalShortcut] = useState("CommandOrControl+Shift+V");
+  const [globalShortcut, setGlobalShortcut] = useState("CommandOrControl+D");
   const [primaryAction, setPrimaryAction] = useState("paste");
   const [showLinkPreview, setShowLinkPreview] = useState(true);
   const [updateHistoryOnAction, setUpdateHistoryOnAction] = useState(true);

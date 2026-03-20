@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, memo, forwardRef } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { cn, getRelativeTime } from "@/lib/utils";
+import { cn, getRelativeTime, parseColorString, rgbToHexString } from "@/lib/utils";
 import { 
   FileText,
   Image as ImageIcon,
@@ -131,6 +131,12 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
     return `${typeText} • ${timeAgo}`;
   };
 
+  const getCssColor = (raw: string) => {
+    const parsed = parseColorString(raw);
+    if (parsed) return rgbToHexString(parsed, true, false);
+    return raw.trim().replace(/;$/, '');
+  };
+
   return (
     <div
       ref={(el) => {
@@ -179,11 +185,17 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
                ? "bg-background border-border shadow-inner" 
                : "bg-background/60 border-border/40 group-hover:bg-background group-hover:border-border/60"
            )}>
-            <Icon className={cn(
-              "w-5 h-5 transition-colors", 
-              isSelected ? "text-primary" : "text-muted-foreground/60 group-hover:text-muted-foreground/80",
-              item.item_type === 'color' && "text-pink-500/80"
-            )} />
+            {item.item_type === 'color' ? (
+               <div 
+                 className="w-5 h-5 rounded-full border-2 border-black/10 dark:border-white/10 shadow-sm"
+                 style={{ backgroundColor: getCssColor(item.content) }}
+               />
+             ) : (
+              <Icon className={cn(
+                "w-5 h-5 transition-colors", 
+                isSelected ? "text-primary" : "text-muted-foreground/60 group-hover:text-muted-foreground/80"
+              )} />
+            )}
           </div>
         )}
       </div>

@@ -300,7 +300,15 @@ function App() {
       const primaryAction = localStorage.getItem("primaryAction") || "paste";
       const shouldPaste = primaryAction === "paste";
 
-      await invoke("copy_history_item", { id: item.id, shouldPaste });
+      const colorFormat = localStorage.getItem("colorFormat") || "#RRGGBB";
+      const hexLowercase = localStorage.getItem("hexLowercase") === "true";
+
+      await invoke("copy_history_item", {
+        id: item.id,
+        shouldPaste,
+        colorFormat,
+        hexLowercase,
+      });
       // Window is hidden by the backend command
     } catch (error) {
       console.error("Failed to copy:", error);
