@@ -74,6 +74,14 @@
   }
   html, body {
     @apply bg-transparent;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #root {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
   }
   body {
     @apply text-foreground font-sans antialiased;

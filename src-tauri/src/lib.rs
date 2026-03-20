@@ -330,14 +330,52 @@ fn handle_paste_and_hide(app: &AppHandle, should_paste: bool) {
         // Simulate Paste (Cmd+V) if requested
         if should_paste {
             std::thread::spawn(|| {
-                // Short sleep to allow the target app to regain focus
+                // Sleep to allow the target app to regain focus. 
+                // 50ms is usually enough for macOS to switch focus back after app.hide()
                 std::thread::sleep(std::time::Duration::from_millis(50));
 
-                let mut enigo = enigo::Enigo::new();
-                use enigo::KeyboardControllable;
-                enigo.key_down(enigo::Key::Meta);
-                enigo.key_click(enigo::Key::Layout('v'));
-                enigo.key_up(enigo::Key::Meta);
+                unsafe {
+                    let k_cg_hid_event_tap = 0;
+                    let k_vk_command = 0x37;
+                    let k_vk_ansi_v = 0x09;
+                    let k_cg_event_flag_mask_command = 0x00100000;
+
+                    #[link(name = "CoreGraphics", kind = "framework")]
+                    extern "C" {
+                        fn CGEventCreateKeyboardEvent(source: *mut std::ffi::c_void, keycode: u16, keydown: bool) -> *mut std::ffi::c_void;
+                        fn CGEventPost(tapLocation: u32, event: *mut std::ffi::c_void);
+                        fn CGEventSetFlags(event: *mut std::ffi::c_void, flags: u64);
+                    }
+                    #[link(name = "CoreFoundation", kind = "framework")]
+                    extern "C" {
+                        fn CFRelease(cf: *mut std::ffi::c_void);
+                    }
+
+                    let cmd_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), k_vk_command, true);
+                    if !cmd_down.is_null() {
+                        CGEventPost(k_cg_hid_event_tap, cmd_down);
+                        CFRelease(cmd_down);
+                    }
+
+                    let v_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), k_vk_ansi_v, true);
+                    if !v_down.is_null() {
+                        CGEventSetFlags(v_down, k_cg_event_flag_mask_command);
+                        CGEventPost(k_cg_hid_event_tap, v_down);
+                        CFRelease(v_down);
+                    }
+
+                    let v_up = CGEventCreateKeyboardEvent(std::ptr::null_mut(), k_vk_ansi_v, false);
+                    if !v_up.is_null() {
+                        CGEventPost(k_cg_hid_event_tap, v_up);
+                        CFRelease(v_up);
+                    }
+
+                    let cmd_up = CGEventCreateKeyboardEvent(std::ptr::null_mut(), k_vk_command, false);
+                    if !cmd_up.is_null() {
+                        CGEventPost(k_cg_hid_event_tap, cmd_up);
+                        CFRelease(cmd_up);
+                    }
+                }
             });
         }
     }
