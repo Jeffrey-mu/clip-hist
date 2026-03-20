@@ -329,15 +329,15 @@ fn handle_paste_and_hide(app: &AppHandle, should_paste: bool) {
 
         // Simulate Paste (Cmd+V) if requested
         if should_paste {
-            // We need to wait a bit for the previous app to regain focus
             std::thread::spawn(|| {
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                // Short sleep to allow the target app to regain focus
+                std::thread::sleep(std::time::Duration::from_millis(50));
 
-                // Use AppleScript to simulate keystroke
-                // tell application "System Events" to keystroke "v" using command down
-                let _ = std::process::Command::new("osascript")
-                    .args(&["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
-                    .output();
+                let mut enigo = enigo::Enigo::new();
+                use enigo::KeyboardControllable;
+                enigo.key_down(enigo::Key::Meta);
+                enigo.key_click(enigo::Key::Layout('v'));
+                enigo.key_up(enigo::Key::Meta);
             });
         }
     }
@@ -347,15 +347,13 @@ fn handle_paste_and_hide(app: &AppHandle, should_paste: bool) {
         if should_paste {
             std::thread::spawn(|| {
                 // Give time for window to hide and previous app to focus
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(50));
                 
-                // Use PowerShell to send Ctrl+V
-                use std::os::windows::process::CommandExt;
-                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                let _ = std::process::Command::new("powershell")
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .args(&["-NoProfile", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"])
-                    .output();
+                let mut enigo = enigo::Enigo::new();
+                use enigo::KeyboardControllable;
+                enigo.key_down(enigo::Key::Control);
+                enigo.key_click(enigo::Key::Layout('v'));
+                enigo.key_up(enigo::Key::Control);
             });
         }
     }
