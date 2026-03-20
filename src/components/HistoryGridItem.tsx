@@ -18,6 +18,8 @@ interface HistoryGridItemProps {
   onDoubleClick: (index: number) => void;
 }
 
+const imageExtensionRegex = /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i;
+
 const HistoryGridItem = memo(forwardRef<HTMLDivElement, HistoryGridItemProps>(({ item, index, isSelected, onSelect, onDoubleClick }, ref) => {
   const [imageContent, setImageContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +27,7 @@ const HistoryGridItem = memo(forwardRef<HTMLDivElement, HistoryGridItemProps>(({
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
-  const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
+  const isImageFile = item.item_type === 'file' && imageExtensionRegex.test(firstFilePath);
   const isImage = item.item_type === 'image' || isImageFile;
 
   // Combine refs

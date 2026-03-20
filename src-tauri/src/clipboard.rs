@@ -26,7 +26,11 @@ fn get_clipboard_change_count() -> Option<i64> {
         let pasteboard = NSPasteboard::generalPasteboard(nil);
         Some(pasteboard.changeCount() as i64)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        clipboard_win::raw::seq_num().map(|n| n.get() as i64)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         None
     }

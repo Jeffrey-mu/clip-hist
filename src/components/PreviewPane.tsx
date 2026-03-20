@@ -16,6 +16,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Simple Code Block component
+const keywords = ["const", "let", "var", "function", "return", "if", "else", "for", "while", "import", "export", "from", "class", "interface", "type", "async", "await", "new", "try", "catch", "switch", "case", "break", "continue", "default", "extends", "implements", "public", "private", "protected", "static", "readonly", "void", "any", "string", "number", "boolean", "null", "undefined", "true", "false", "def", "print", "elif", "in", "except", "finally", "with", "as", "pass", "lambda"];
+const keywordRegex = new RegExp(`\\b(${keywords.join("|")})\\b`, "g");
+
 const CodeBlock = ({ code, search }: { code: string, search: string }) => {
   if (search) {
     return (
@@ -25,13 +28,8 @@ const CodeBlock = ({ code, search }: { code: string, search: string }) => {
     );
   }
 
-  // Simple syntax highlighting when no search
-  const keywords = ["const", "let", "var", "function", "return", "if", "else", "for", "while", "import", "export", "from", "class", "interface", "type", "async", "await", "new", "try", "catch", "switch", "case", "break", "continue", "default", "extends", "implements", "public", "private", "protected", "static", "readonly", "void", "any", "string", "number", "boolean", "null", "undefined", "true", "false", "def", "class", "print", "import", "from", "return", "if", "else", "elif", "for", "in", "while", "try", "except", "finally", "with", "as", "pass", "lambda"];
-  
   const renderHighlighted = (text: string) => {
-     // Let's use a simpler tokenization for "Simple Syntax Highlighting"
-     // We will just highlight keywords.
-     const tokenParts = text.split(new RegExp(`\\b(${keywords.join("|")})\\b`, "g"));
+     const tokenParts = text.split(keywordRegex);
      
      return tokenParts.map((part, i) => {
         if (keywords.includes(part)) {

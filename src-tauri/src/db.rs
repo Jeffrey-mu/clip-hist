@@ -58,6 +58,12 @@ impl Database {
             "ALTER TABLE clipboard_history ADD COLUMN item_type TEXT DEFAULT 'text'",
             [],
         );
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_clipboard_history_created_at ON clipboard_history(created_at)",
+            [],
+        )?;
+        
         Ok(())
     }
 

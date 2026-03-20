@@ -58,6 +58,8 @@ interface HistoryListItemProps {
   onDoubleClick: (index: number) => void;
 }
 
+const imageExtensionRegex = /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i;
+
 const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({ 
   item, 
   index, 
@@ -72,7 +74,7 @@ const HistoryListItem = memo(forwardRef<HTMLDivElement, HistoryListItemProps>(({
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const firstFilePath = item.item_type === 'file' ? item.content.trim().split('\n')[0].trim() : "";
-  const isImageFile = item.item_type === 'file' && /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico)$/i.test(firstFilePath);
+  const isImageFile = item.item_type === 'file' && imageExtensionRegex.test(firstFilePath);
 
   useEffect(() => {
     if (item.item_type !== 'image' || imageContent) return;
